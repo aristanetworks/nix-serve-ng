@@ -146,4 +146,16 @@ void freePathInfo(struct PathInfo * const input)
     freeStrings(&input->sigs);
 }
 
+// TODO: This can be done in Haskell using the `ed25519` package
+void signString
+    ( char const * const secretKey
+    , char const * const message
+    , struct string * const output
+    )
+{
+    std::string signature = SecretKey(secretKey).signDetached(message);
+
+    copyString(signature, output);
+}
+
 }

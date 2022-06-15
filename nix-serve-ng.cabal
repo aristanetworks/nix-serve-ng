@@ -47,6 +47,8 @@ executable nix-serve-ng
     cxx-options:      -std=c++17
 
     build-depends:    base < 5
+                    , base16
+                    , base32
                     , bsd-sysctl
                     , bytestring
                     , http-types

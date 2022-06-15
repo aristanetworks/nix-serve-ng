@@ -1,23 +1,30 @@
 {-# LANGUAGE BlockArguments           #-}
 {-# LANGUAGE DuplicateRecordFields    #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE MultiWayIf               #-}
 {-# LANGUAGE NamedFieldPuns           #-}
+{-# LANGUAGE OverloadedStrings        #-}
 {-# LANGUAGE TypeApplications         #-}
 
 module Nix where
 
+import Control.Applicative (empty)
 import Control.Monad.Managed (Managed)
 import Data.ByteString (ByteString)
+import Data.ByteString.Builder (Builder)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Foreign (Ptr, Storable(..))
 import Foreign.C (CChar, CLong, CSize, CString)
 
-import qualified Control.Exception     as Exception
-import qualified Control.Monad.Managed as Managed
-import qualified Data.ByteString       as ByteString
-import qualified Data.Vector           as Vector
-import qualified Data.Vector.Storable  as Vector.Storable
+import qualified Control.Exception       as Exception
+import qualified Control.Monad.Managed   as Managed
+import qualified Data.ByteString         as ByteString
+import qualified Data.ByteString.Base16  as Base16
+import qualified Data.ByteString.Base32  as Base32
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.Vector             as Vector
+import qualified Data.Vector.Storable    as Vector.Storable
 import qualified Foreign
 
 #include "nix.hh"
@@ -208,4 +215,48 @@ queryPathInfo storePath = do
                 cPathInfo <- peek output
                 fromCPathInfo cPathInfo
 
+fingerprintPath :: ByteString -> PathInfo -> Maybe Builder
+fingerprintPath storePath PathInfo{ narHash, narSize, references } = do
+    suffix <- ByteString.stripPrefix "sha256:" narHash
 
+    base32Suffix <- if
+        | ByteString.length suffix == 64
+        , Right digest <- Base16.decodeBase16 suffix ->
+            return (Base32.encodeBase32' digest)
+        | ByteString.length suffix == 52 ->
+            return suffix
+        | otherwise ->
+            empty
+
+    return
+        (   "1;"
+        <>  Builder.byteString storePath
+        <>  ";sha256:"
+        <>  Builder.byteString base32Suffix
+        <>  ";"
+        <>  Builder.word64Dec narSize
+        <>  ";"
+        <>  referencesBuilder
+        )
+  where
+    referencesBuilder =
+        case Vector.uncons references of
+            Nothing ->
+                mempty
+            Just (r0, rs) ->
+                    Builder.byteString r0
+                <>  foldMap (\r -> "," <> Builder.byteString r) rs
+
+foreign import ccall "signString" signString_
+    :: CString -> CString -> Ptr String_ -> IO ()
+
+signString :: ByteString -> ByteString -> IO ByteString
+signString secretKey fingerprint =
+    ByteString.useAsCString secretKey \cSecretKey ->
+        ByteString.useAsCString fingerprint \cFingerprint ->
+            Foreign.alloca \output -> do
+                let open = signString_ cSecretKey cFingerprint output
+                let close = freeString output
+                Exception.bracket_ open close do
+                    string_ <- peek output
+                    fromString_ string_

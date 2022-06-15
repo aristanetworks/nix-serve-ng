@@ -18,6 +18,7 @@ import Sysctl (_SO_MAX_CONN)
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
 import qualified Data.ByteString                      as ByteString
+import qualified Data.ByteString.Char8                as ByteString.Char8
 import qualified Data.ByteString.Builder              as Builder
 import qualified Data.ByteString.Lazy                 as ByteString.Lazy
 import qualified Data.Vector                          as Vector
@@ -32,9 +33,16 @@ import qualified Nix
 import qualified Options
 import qualified Options.Applicative                  as Options
 import qualified System.BSD.Sysctl                    as Sysctl
+import qualified System.Environment                   as Environment
 
-makeApplication :: Integer -> ByteString -> Application
-makeApplication priority storeDirectory request respond = do
+data ApplicationOptions = ApplicationOptions
+    { priority       :: Integer
+    , storeDirectory :: ByteString
+    , secretKey      :: Maybe ByteString
+    }
+
+makeApplication :: ApplicationOptions -> Application
+makeApplication ApplicationOptions{..} request respond = do
     let stripStore = ByteString.stripPrefix (storeDirectory <> "/")
 
     let done = Except.throwError
@@ -76,7 +84,7 @@ makeApplication priority storeDirectory request respond = do
                     Just storePath -> do
                         return storePath
 
-                PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
+                pathInfo@PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
 
                 narHash2 <- case ByteString.stripPrefix "sha256:" narHash of
                     Nothing -> do
@@ -115,6 +123,23 @@ makeApplication priority storeDirectory request respond = do
                         Nothing ->
                             return mempty
 
+                fingerprint <- case Nix.fingerprintPath storePath pathInfo of
+                    Nothing -> internalError "invalid NAR hash"
+                    Just builder -> do
+                        return (ByteString.Lazy.toStrict (Builder.toLazyByteString builder))
+
+                signatures <- case secretKey of
+                    Just key -> do
+                        signature <- liftIO (Nix.signString key fingerprint)
+
+                        return (Vector.singleton signature)
+
+                    Nothing -> do
+                        return sigs
+
+                let buildSignature signature =
+                        "Sig: " <> Builder.byteString signature <> "\n"
+
                 let builder =
                             "StorePath: "
                         <>  Builder.byteString storePath
@@ -129,6 +154,7 @@ makeApplication priority storeDirectory request respond = do
                         <>  "\n"
                         <>  referencesBuilder
                         <>  deriverBuilder
+                        <>  foldMap buildSignature signatures
 
                 let size =
                         ( ByteString.Lazy.toStrict
@@ -197,6 +223,9 @@ toSocket path = do
 
     return socket
 
+readSecretKey :: FilePath -> IO ByteString
+readSecretKey = fmap ByteString.Char8.strip . ByteString.readFile
+
 main :: IO ()
 main = do
     options@Options{ priority, verbosity } <- do
@@ -204,13 +233,17 @@ main = do
 
     storeDirectory <- Nix.getStoreDir
 
+    secretKeyFile <- Environment.lookupEnv "NIX_SECRET_KEY_FILE"
+
+    secretKey <- traverse readSecretKey secretKeyFile
+
     let logger =
             case verbosity of
                 Quiet   -> id
                 Normal  -> RequestLogger.logStdout
                 Verbose -> RequestLogger.logStdoutDev
 
-    let application = logger (makeApplication priority storeDirectory)
+    let application = logger (makeApplication ApplicationOptions{..})
 
     case options of
         Options{ ssl = Disabled, socket = TCP{ host, port } } -> do
