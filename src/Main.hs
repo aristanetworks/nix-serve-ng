@@ -7,8 +7,10 @@
 module Main where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.ByteString (ByteString)
 import Data.Function ((&))
 import Network.Socket (SockAddr(..))
+import Network.Wai (Application)
 import Nix (PathInfo(..))
 import Options (Options(..), Socket(..), SSL(..))
 import Sysctl (_SO_MAX_CONN)
@@ -29,6 +31,153 @@ import qualified Nix
 import qualified Options
 import qualified Options.Applicative         as Options
 import qualified System.BSD.Sysctl           as Sysctl
+
+makeApplication :: Integer -> ByteString -> Application
+makeApplication priority storeDirectory request respond = do
+    let stripStore = ByteString.stripPrefix (storeDirectory <> "/")
+
+    let done = Except.throwError
+
+    let internalError message = do
+            let headers = [ ("Content-Type", "text/plain") ]
+
+            let builder = "Internal server error: " <> message <> ".\n"
+
+            let response =
+                    Wai.responseBuilder
+                        Types.status500
+                        headers
+                        builder
+
+            done response
+
+    result <- Except.runExceptT do
+        let rawPath = Wai.rawPathInfo request
+
+        if  | Just suffix <- ByteString.stripSuffix ".narinfo" rawPath
+            , Just hashPart <- ByteString.stripPrefix "/" suffix -> do
+                maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
+
+                storePath <- case maybeStorePath of
+                    Nothing -> do
+                        let headers = [ ("Content-Type", "text/plain") ]
+
+                        let builder = "No such path.\n"
+
+                        let response =
+                                Wai.responseBuilder
+                                    Types.status404
+                                    headers
+                                    builder
+
+                        done response
+
+                    Just storePath -> do
+                        return storePath
+
+                PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
+
+                narHash2 <- case ByteString.stripPrefix "sha256:" narHash of
+                    Nothing -> do
+                        internalError "NAR hash missing sha256: prefix"
+                    Just narHash2 -> do
+                        return narHash2
+
+                referenceNames <- case traverse stripStore references of
+                    Nothing -> do
+                        internalError "references missing store directory prefix"
+                    Just names -> do
+                        return names
+
+                let referencesBuilder
+                        | not (Vector.null referenceNames) =
+                                "References:"
+                            <>  foldMap (\name -> " " <> Builder.byteString name) referenceNames
+                            <>  "\n"
+                        | otherwise =
+                            mempty
+
+                deriverBuilder <-
+                    case deriver of
+                        Just d ->
+                            case stripStore d of
+                                Just name ->
+                                    return
+                                        (   "Deriver: "
+                                        <>  Builder.byteString name
+                                        <>  "\n"
+                                        )
+
+                                Nothing -> do
+                                    internalError "deriver missing store directory prefix"
+
+                        Nothing ->
+                            return mempty
+
+                let builder =
+                            "StorePath: "
+                        <>  Builder.byteString storePath
+                        <>  "\nURL: nar/"
+                        <>  Builder.byteString hashPart
+                        <>  "-"
+                        <>  Builder.byteString narHash2
+                        <>  "\nCompression: none\nNarHash: "
+                        <>  Builder.byteString narHash
+                        <>  "\nNarSize: "
+                        <>  Builder.word64Dec narSize
+                        <>  "\n"
+                        <>  referencesBuilder
+                        <>  deriverBuilder
+
+                let size =
+                        ( ByteString.Lazy.toStrict
+                        . Builder.toLazyByteString
+                        . Builder.int64Dec
+                        . ByteString.Lazy.length
+                        . Builder.toLazyByteString
+                        ) builder
+
+                let headers =
+                        [ ("Content-Type", "text/x-nix-narinfo")
+                        , ("Content-Length", size)
+                        ]
+
+                let response =
+                        Wai.responseBuilder
+                            Types.status200
+                            headers
+                            builder
+
+                done response
+
+            | rawPath == "/nix-cache-info" -> do
+                let headers = [ ("Content-Type", "text/plain") ]
+
+                let builder =
+                            "StoreDir: "
+                        <>  Builder.byteString storeDirectory
+                        <>  "\nWantMassQuery: 1\nPriority: "
+                        <>  Builder.integerDec priority
+                        <>  "\n"
+
+                let response =
+                        Wai.responseBuilder Types.status200 headers builder
+
+                done response
+
+            | otherwise -> do
+                let headers = [ ("Content-Type", "text/plain") ]
+
+                let builder = "File not found.\n"
+
+                let response =
+                        Wai.responseBuilder Types.status404 headers builder
+
+                done response
+
+    case result of
+        Left response -> respond response
+        Right void    -> Void.absurd void
 
 toSocket :: FilePath -> IO Socket.Socket
 toSocket path = do
@@ -53,152 +202,8 @@ main = do
 
     storeDirectory <- Nix.getStoreDir
 
-    let stripStore = ByteString.stripPrefix (storeDirectory <> "/")
+    let application = makeApplication priority storeDirectory
 
-    let application request respond = do
-            let done = Except.throwError
-
-            let internalError message = do
-                    let headers = [ ("Content-Type", "text/plain") ]
-
-                    let builder = "Internal server error: " <> message <> ".\n"
-
-                    let response =
-                            Wai.responseBuilder
-                                Types.status500
-                                headers
-                                builder
-
-                    done response
-
-            result <- Except.runExceptT do
-                let rawPath = Wai.rawPathInfo request
-
-                if  | Just suffix <- ByteString.stripSuffix ".narinfo" rawPath
-                    , Just hashPart <- ByteString.stripPrefix "/" suffix -> do
-                        maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
-
-                        storePath <- case maybeStorePath of
-                            Nothing -> do
-                                let headers = [ ("Content-Type", "text/plain") ]
-
-                                let builder = "No such path.\n"
-
-                                let response =
-                                        Wai.responseBuilder
-                                            Types.status404
-                                            headers
-                                            builder
-
-                                done response
-
-                            Just storePath -> do
-                                return storePath
-
-                        PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
-
-                        narHash2 <- case ByteString.stripPrefix "sha256:" narHash of
-                            Nothing -> do
-                                internalError "NAR hash missing sha256: prefix"
-                            Just narHash2 -> do
-                                return narHash2
-
-                        referenceNames <- case traverse stripStore references of
-                            Nothing -> do
-                                internalError "references missing store directory prefix"
-                            Just names -> do
-                                return names
-
-                        let referencesBuilder
-                                | not (Vector.null referenceNames) =
-                                        "References:"
-                                    <>  foldMap (\name -> " " <> Builder.byteString name) referenceNames
-                                    <>  "\n"
-                                | otherwise =
-                                    mempty
-
-                        deriverBuilder <-
-                            case deriver of
-                                Just d ->
-                                    case stripStore d of
-                                        Just name ->
-                                            return
-                                                (   "Deriver: "
-                                                <>  Builder.byteString name
-                                                <>  "\n"
-                                                )
-
-                                        Nothing -> do
-                                            internalError "deriver missing store directory prefix"
-
-                                Nothing ->
-                                    return mempty
-
-                        let builder =
-                                    "StorePath: "
-                                <>  Builder.byteString storePath
-                                <>  "\nURL: nar/"
-                                <>  Builder.byteString hashPart
-                                <>  "-"
-                                <>  Builder.byteString narHash2
-                                <>  "\nCompression: none\nNarHash: "
-                                <>  Builder.byteString narHash
-                                <>  "\nNarSize: "
-                                <>  Builder.word64Dec narSize
-                                <>  "\n"
-                                <>  referencesBuilder
-                                <>  deriverBuilder
-
-                        let size =
-                                ( ByteString.Lazy.toStrict
-                                . Builder.toLazyByteString
-                                . Builder.int64Dec
-                                . ByteString.Lazy.length
-                                . Builder.toLazyByteString
-                                ) builder
-
-                        let headers =
-                                [ ("Content-Type", "text/x-nix-narinfo")
-                                , ("Content-Length", size)
-                                ]
-
-                        let response =
-                                Wai.responseBuilder
-                                    Types.status200
-                                    headers
-                                    builder
-
-                        done response
-
-                    | rawPath == "/nix-cache-info" -> do
-                        let headers = [ ("Content-Type", "text/plain") ]
-
-                        let builder =
-                                    "StoreDir: "
-                                <>  Builder.byteString storeDirectory
-                                <>  "\nWantMassQuery: 1\nPriority: "
-                                <>  Builder.integerDec priority
-                                <>  "\n"
-
-                        let response =
-                                Wai.responseBuilder Types.status200 headers builder
-
-                        done response
-
-                    | otherwise -> do
-                        let headers = [ ("Content-Type", "text/plain") ]
-
-                        let builder = "File not found.\n"
-
-                        let response =
-                                Wai.responseBuilder Types.status404 headers builder
-
-                        done response
-
-            case result of
-                Left response -> respond response
-                Right void    -> Void.absurd void
- 
     case options of
         Options{ ssl = Disabled, socket = TCP{ host, port } } -> do
             let settings =
