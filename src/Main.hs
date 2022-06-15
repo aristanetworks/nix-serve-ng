@@ -12,25 +12,26 @@ import Data.Function ((&))
 import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
 import Nix (PathInfo(..))
-import Options (Options(..), Socket(..), SSL(..))
+import Options (Options(..), Socket(..), SSL(..), Verbosity(..))
 import Sysctl (_SO_MAX_CONN)
 
-import qualified Control.Monad               as Monad
-import qualified Control.Monad.Except        as Except
-import qualified Data.ByteString             as ByteString
-import qualified Data.ByteString.Builder     as Builder
-import qualified Data.ByteString.Lazy        as ByteString.Lazy
-import qualified Data.Vector                 as Vector
-import qualified Data.Void                   as Void
-import qualified Network.HTTP.Types          as Types
-import qualified Network.Socket              as Socket
-import qualified Network.Wai                 as Wai
-import qualified Network.Wai.Handler.Warp    as Warp
-import qualified Network.Wai.Handler.WarpTLS as WarpTLS
+import qualified Control.Monad                        as Monad
+import qualified Control.Monad.Except                 as Except
+import qualified Data.ByteString                      as ByteString
+import qualified Data.ByteString.Builder              as Builder
+import qualified Data.ByteString.Lazy                 as ByteString.Lazy
+import qualified Data.Vector                          as Vector
+import qualified Data.Void                            as Void
+import qualified Network.HTTP.Types                   as Types
+import qualified Network.Socket                       as Socket
+import qualified Network.Wai                          as Wai
+import qualified Network.Wai.Handler.Warp             as Warp
+import qualified Network.Wai.Handler.WarpTLS          as WarpTLS
+import qualified Network.Wai.Middleware.RequestLogger as RequestLogger
 import qualified Nix
 import qualified Options
-import qualified Options.Applicative         as Options
-import qualified System.BSD.Sysctl           as Sysctl
+import qualified Options.Applicative                  as Options
+import qualified System.BSD.Sysctl                    as Sysctl
 
 makeApplication :: Integer -> ByteString -> Application
 makeApplication priority storeDirectory request respond = do
@@ -198,11 +199,18 @@ toSocket path = do
 
 main :: IO ()
 main = do
-    options@Options{ priority } <- Options.execParser Options.parserInfo
+    options@Options{ priority, verbosity } <- do
+        Options.execParser Options.parserInfo
 
     storeDirectory <- Nix.getStoreDir
 
-    let application = makeApplication priority storeDirectory
+    let logger =
+            case verbosity of
+                Quiet   -> id
+                Normal  -> RequestLogger.logStdout
+                Verbose -> RequestLogger.logStdoutDev
+
+    let application = logger (makeApplication priority storeDirectory)
 
     case options of
         Options{ ssl = Disabled, socket = TCP{ host, port } } -> do

@@ -22,10 +22,13 @@ data Socket
 
 data SSL = Disabled | Enabled { cert :: FilePath, key :: FilePath }
 
+data Verbosity = Quiet | Normal | Verbose
+
 data Options = Options
-    { priority :: Integer
-    , socket   :: Socket
-    , ssl      :: SSL
+    { priority  :: Integer
+    , socket    :: Socket
+    , ssl       :: SSL
+    , verbosity :: Verbosity
     }
 
 parseCert :: Parser FilePath
@@ -114,6 +117,18 @@ parsePriority =
         <>  Options.value 30
         )
 
+parseVerbosity :: Parser Verbosity
+parseVerbosity =
+        Options.flag' Quiet
+            (   Options.long "quiet"
+            <>  Options.help "Disable logging"
+            )
+    <|> Options.flag' Verbose
+            (   Options.long "verbose"
+            <>  Options.help "Log verbosely"
+            )
+    <|> pure Normal
+
 parseOptions :: Parser Options
 parseOptions = do
     socket <- parseTcp <|> parseUnix
@@ -121,6 +136,8 @@ parseOptions = do
     ssl <- parseSsl
 
     priority <- parsePriority
+
+    verbosity <- parseVerbosity
 
     return Options{..}
 
@@ -166,6 +183,8 @@ parseListen = do
         )
 
     priority <- parsePriority
+
+    verbosity <- parseVerbosity
 
     return Options{..}
 

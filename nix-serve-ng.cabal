@@ -57,6 +57,7 @@ executable nix-serve-ng
                     , optparse-applicative
                     , vector
                     , wai
+                    , wai-extra
                     , warp
                     , warp-tls
 
