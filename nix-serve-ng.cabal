@@ -1,0 +1,68 @@
+cabal-version:      3.0
+name:               nix-serve-ng
+version:            1.0.0
+synopsis:
+    A drop-in replacement for nix-serve that's faster and more stable
+
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Arista Networks
+maintainer:         opensource@awakesecurity.com
+copyright:          2022 Arista Networks
+
+executable nix-serve-ng
+    hs-source-dirs:   src
+
+    main-is:          Main.hs
+
+    other-modules:    Sysctl
+                    , Nix
+                    , Options
+
+    if os(darwin)
+      hs-source-dirs: darwin
+    elif os(linux)
+      hs-source-dirs: linux
+    else
+      buildable:      False
+
+    -- https://nixos.org/manual/nix/stable/installation/supported-platforms.html
+    if arch(i686) && os(linux)
+      cxx-options:    -DSYSTEM="i686-linux"
+    elif arch(x86_64) && os(linux)
+      cxx-options:    -DSYSTEM="x86_64-linux"
+    elif arch(aarch64) && os(linux)
+      cxx-options:    -DSYSTEM="aarch64-linux"
+    elif arch(aarch64) && os(darwin)
+      cxx-options:    -DSYSTEM="aarch64-darwin"
+    elif arch(x86_64) && os(darwin)
+      cxx-options:    -DSYSTEM="x86_64-darwin"
+    else
+      buildable:      False
+
+    include-dirs:     cbits
+
+    cxx-sources:      cbits/nix.cpp
+
+    cxx-options:      -std=c++17
+
+    build-depends:    base < 5
+                    , bsd-sysctl
+                    , bytestring
+                    , http-types
+                    , managed
+                    , megaparsec
+                    , network
+                    , optparse-applicative
+                    , vector
+                    , wai
+                    , warp
+                    , warp-tls
+
+    extra-libraries:  nixstore
+                    , nixutil
+                    , c++
+
+    default-language: Haskell2010
+
+    ghc-options:      -Wall
