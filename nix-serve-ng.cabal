@@ -52,6 +52,7 @@ executable nix-serve-ng
                     , http-types
                     , managed
                     , megaparsec
+                    , mtl
                     , network
                     , optparse-applicative
                     , vector
