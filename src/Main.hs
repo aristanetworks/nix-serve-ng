@@ -49,15 +49,13 @@ validHashPartBytes =
     ByteSet.fromList
         (   [ 0x30 .. 0x39 ]  -- 0..9
         <>  [ 0x61 .. 0x64 ]  -- abcd
-        <>  [ 0x66 .. 0x6e ]  -- fghijklmn
+        <>  [ 0x66 .. 0x6E ]  -- fghijklmn
         <>  [ 0x70 .. 0x73 ]  -- pqrs
-        <>  [ 0x76 .. 0x7a ]  -- vwxyz
+        <>  [ 0x76 .. 0x7A ]  -- vwxyz
         )
 
 validHashPart :: ByteString -> Bool
-validHashPart hash =
-        ByteString.length hash == 32
-    &&  ByteString.all (`ByteSet.member` validHashPartBytes) hash
+validHashPart hash = ByteString.all (`ByteSet.member` validHashPartBytes) hash
 
 makeApplication :: ApplicationOptions -> Application
 makeApplication ApplicationOptions{..} request respond = do
@@ -78,12 +76,25 @@ makeApplication ApplicationOptions{..} request respond = do
 
             done response
 
+    let noSuchPath = do
+            let headers = [ ("Content-Type", "text/plain") ]
+
+            let builder = "No such path.\n"
+
+            let response =
+                    Wai.responseBuilder
+                        Types.status404
+                        headers
+                        builder
+
+            done response
+
     result <- Except.runExceptT do
         let rawPath = Wai.rawPathInfo request
 
         if  | Just prefix <- ByteString.stripSuffix ".narinfo" rawPath
             , Just hashPart <- ByteString.stripPrefix "/" prefix -> do
-                Monad.unless (validHashPart hashPart) do
+                Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
                     let headers = [ ("Content-Type", "text/plain") ]
 
                     let builder = "Invalid hash part.\n"
@@ -99,21 +110,8 @@ makeApplication ApplicationOptions{..} request respond = do
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
                 storePath <- case maybeStorePath of
-                    Nothing -> do
-                        let headers = [ ("Content-Type", "text/plain") ]
-
-                        let builder = "No such path.\n"
-
-                        let response =
-                                Wai.responseBuilder
-                                    Types.status404
-                                    headers
-                                    builder
-
-                        done response
-
-                    Just storePath -> do
-                        return storePath
+                    Nothing        -> noSuchPath
+                    Just storePath -> return storePath
 
                 pathInfo@PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
 
@@ -205,6 +203,91 @@ makeApplication ApplicationOptions{..} request respond = do
                             Types.status200
                             headers
                             builder
+
+                done response
+
+            | Just prefix <- ByteString.stripSuffix ".nar" rawPath
+            , Just interior <- ByteString.stripPrefix "/nar/" prefix -> do
+                let interiorLength = ByteString.length interior
+
+                (hashPart, maybeExpectedNarHash) <- if
+                    | interiorLength == 85
+                    , (hashPart, rest) <- ByteString.splitAt 32 interior
+                    , Just (0x2D, expectedNarHash) <- ByteString.uncons rest -> do
+                        return (hashPart, Just (ByteString.Char8.pack "sha256:" <> expectedNarHash))
+
+                    | interiorLength == 32 -> do
+                        return (interior, Nothing)
+
+                    | otherwise -> do
+                        let headers = [ ("Content-Type", "text/plain") ]
+
+                        let builder = "Invalid path component.\n"
+
+                        let response =
+                                Wai.responseBuilder
+                                    Types.status400
+                                    headers
+                                    builder
+
+                        done response
+
+                Monad.unless (validHashPart hashPart) do
+                    let headers = [ ("Content-Type", "text/plain") ]
+
+                    let builder = "Invalid hash part.\n"
+
+                    let response =
+                            Wai.responseBuilder
+                                Types.status400
+                                headers
+                                builder
+
+                    done response
+
+                maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
+
+                storePath <- case maybeStorePath of
+                    Nothing        -> noSuchPath
+                    Just storePath -> return storePath
+
+                PathInfo{ narSize, narHash } <- liftIO (Nix.queryPathInfo storePath)
+
+                Monad.unless (all (narHash ==) maybeExpectedNarHash) do
+                    let headers = [ ("Content-Type", "text/plain") ]
+
+                    let builder =
+                            "Incorrect NAR hash. Maybe the path has been recreated.\n"
+
+                    let response =
+                            Wai.responseBuilder
+                                Types.status404
+                                headers
+                                builder
+
+                    done response
+
+                maybeBytes <- liftIO (Nix.dumpPath hashPart)
+
+                bytes <- case maybeBytes of
+                    Nothing    -> noSuchPath
+                    Just bytes -> return bytes
+
+                let contentLength =
+                        ( ByteString.Lazy.toStrict
+                        . Builder.toLazyByteString
+                        . Builder.word64Dec
+                        ) narSize
+
+                let headers =
+                        [ ("Content-Type", "text/plain")
+                        , ("Content-Length", contentLength)
+                        ]
+
+                let builder = Builder.byteString bytes
+
+                let response =
+                        Wai.responseBuilder Types.status200 headers builder
 
                 done response
 

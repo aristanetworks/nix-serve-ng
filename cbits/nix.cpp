@@ -158,4 +158,20 @@ void signString
     copyString(signature, output);
 }
 
+void dumpPath(char const * const hashPart, struct string * const output) {
+    ref<Store> store = getStore();
+
+    std::optional<StorePath> storePath= store->queryPathFromHashPart(hashPart);
+
+    if (storePath.has_value()) {
+        StringSink sink;
+
+        store->narFromPath(storePath.value(), sink);
+
+        copyString(sink.s, output);
+    } else {
+        *output = emptyString;
+    }
+}
+
 }

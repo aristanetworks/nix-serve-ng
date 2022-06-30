@@ -260,3 +260,18 @@ signString secretKey fingerprint =
                 Exception.bracket_ open close do
                     string_ <- peek output
                     fromString_ string_
+
+foreign import ccall "dumpPath" dumpPath_
+    :: CString -> Ptr String_ -> IO ()
+
+dumpPath :: ByteString -> IO (Maybe ByteString)
+dumpPath hashPart = do
+    ByteString.useAsCString hashPart \cHashPart -> do
+        Foreign.alloca \output -> do
+            let open = dumpPath_ cHashPart output
+            let close = freeString output
+            Exception.bracket_ open close do
+                string_@String_{ data_} <- peek output
+                if data_ == Foreign.nullPtr
+                    then return Nothing
+                    else fmap Just (fromString_ string_)
