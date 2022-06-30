@@ -8,6 +8,7 @@ module Main where
 
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
+import Data.CharSet.ByteSet (ByteSet(..))
 import Data.Function ((&))
 import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
@@ -21,6 +22,7 @@ import qualified Data.ByteString                      as ByteString
 import qualified Data.ByteString.Char8                as ByteString.Char8
 import qualified Data.ByteString.Builder              as Builder
 import qualified Data.ByteString.Lazy                 as ByteString.Lazy
+import qualified Data.CharSet.ByteSet                 as ByteSet
 import qualified Data.Vector                          as Vector
 import qualified Data.Void                            as Void
 import qualified Network.HTTP.Types                   as Types
@@ -40,6 +42,22 @@ data ApplicationOptions = ApplicationOptions
     , storeDirectory :: ByteString
     , secretKey      :: Maybe ByteString
     }
+
+-- https://github.com/NixOS/nix/blob/2.8.1/src/libutil/hash.cc#L83-L84
+validHashPartBytes :: ByteSet
+validHashPartBytes =
+    ByteSet.fromList
+        (   [ 0x30 .. 0x39 ]  -- 0..9
+        <>  [ 0x61 .. 0x64 ]  -- abcd
+        <>  [ 0x66 .. 0x6e ]  -- fghijklmn
+        <>  [ 0x70 .. 0x73 ]  -- pqrs
+        <>  [ 0x76 .. 0x7a ]  -- vwxyz
+        )
+
+validHashPart :: ByteString -> Bool
+validHashPart hash =
+        ByteString.length hash == 32
+    &&  ByteString.all (`ByteSet.member` validHashPartBytes) hash
 
 makeApplication :: ApplicationOptions -> Application
 makeApplication ApplicationOptions{..} request respond = do
@@ -63,8 +81,21 @@ makeApplication ApplicationOptions{..} request respond = do
     result <- Except.runExceptT do
         let rawPath = Wai.rawPathInfo request
 
-        if  | Just suffix <- ByteString.stripSuffix ".narinfo" rawPath
-            , Just hashPart <- ByteString.stripPrefix "/" suffix -> do
+        if  | Just prefix <- ByteString.stripSuffix ".narinfo" rawPath
+            , Just hashPart <- ByteString.stripPrefix "/" prefix -> do
+                Monad.unless (validHashPart hashPart) do
+                    let headers = [ ("Content-Type", "text/plain") ]
+
+                    let builder = "Invalid hash part.\n"
+
+                    let response =
+                            Wai.responseBuilder
+                                Types.status400
+                                headers
+                                builder
+
+                    done response
+
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
                 storePath <- case maybeStorePath of

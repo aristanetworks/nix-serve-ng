@@ -51,6 +51,7 @@ executable nix-serve-ng
                     , base32
                     , bsd-sysctl
                     , bytestring
+                    , charset
                     , http-types
                     , managed
                     , megaparsec
