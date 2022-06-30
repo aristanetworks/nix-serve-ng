@@ -20,7 +20,9 @@ let
     });
   };
 
-  pkgs = import <nixpkgs> { config = { }; overlays = [ overlay ]; };
+  config.allowBroken = true;
+
+  pkgs = import <nixpkgs> { inherit config; overlays = [ overlay ]; };
 
 in
   pkgs.haskellPackages.nix-serve-ng.env
