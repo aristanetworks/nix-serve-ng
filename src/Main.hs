@@ -13,8 +13,8 @@ import Data.Function ((&))
 import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
 import Nix (PathInfo(..))
+import Numeric.Natural (Natural)
 import Options (Options(..), Socket(..), SSL(..), Verbosity(..))
-import Sysctl (_SO_MAX_CONN)
 
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
@@ -34,7 +34,6 @@ import qualified Network.Wai.Middleware.RequestLogger as RequestLogger
 import qualified Nix
 import qualified Options
 import qualified Options.Applicative                  as Options
-import qualified System.BSD.Sysctl                    as Sysctl
 import qualified System.Environment                   as Environment
 
 data ApplicationOptions = ApplicationOptions
@@ -330,8 +329,8 @@ makeApplication ApplicationOptions{..} request respond = do
         Left response -> respond response
         Right void    -> Void.absurd void
 
-toSocket :: FilePath -> IO Socket.Socket
-toSocket path = do
+toSocket :: Natural -> FilePath -> IO Socket.Socket
+toSocket backlog path = do
     let family = Socket.AF_UNIX
 
     Monad.unless (Socket.isSupportedFamily family) do
@@ -340,8 +339,6 @@ toSocket path = do
     socket <- Socket.socket family Socket.Stream Socket.defaultProtocol
 
     Socket.bind socket (SockAddrUnix path)
-
-    backlog <- Sysctl.sysctlReadInt _SO_MAX_CONN
 
     Socket.listen socket (fromIntegral backlog)
 
@@ -378,10 +375,10 @@ main = do
 
             Warp.runSettings settings application
 
-        Options{ ssl = Disabled, socket = Unix{ path } } -> do
+        Options{ ssl = Disabled, socket = Unix{ backlog, path } } -> do
             let settings = Warp.defaultSettings
 
-            socket <- toSocket path
+            socket <- toSocket backlog path
 
             Warp.runSettingsSocket settings socket application
 
@@ -395,11 +392,11 @@ main = do
 
             WarpTLS.runTLS tlsSettings settings application
 
-        Options{ ssl = Enabled{ cert, key }, socket = Unix{ path } } -> do
+        Options{ ssl = Enabled{ cert, key }, socket = Unix{ backlog, path } } -> do
             let tlsSettings = WarpTLS.tlsSettings cert key
 
             let settings = Warp.defaultSettings
 
-            socket <- toSocket path
+            socket <- toSocket backlog path
 
             WarpTLS.runTLSSocket tlsSettings settings socket application

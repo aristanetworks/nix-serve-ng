@@ -9,6 +9,7 @@ import Control.Applicative (optional, (<|>))
 import Data.String (IsString(..))
 import Data.Void (Void)
 import Network.Wai.Handler.Warp (HostPreference, Port)
+import Numeric.Natural (Natural)
 import Options.Applicative (Parser, ParserInfo, ReadM)
 import Text.Megaparsec (Parsec)
 
@@ -18,7 +19,7 @@ import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data Socket
     = TCP { host :: HostPreference, port :: Port }
-    | Unix { path :: FilePath }
+    | Unix { backlog :: Natural, path :: FilePath }
 
 data SSL = Disabled | Enabled { cert :: FilePath, key :: FilePath }
 
@@ -94,8 +95,18 @@ parseTcp = do
 
     return TCP{..}
 
+defaultBacklog :: Natural
+defaultBacklog = 1024
+
 parseUnix :: Parser Socket
 parseUnix = do
+    backlog <- Options.option Options.auto
+        (   Options.long "backlog"
+        <>  Options.help "The maximum number of connections allowed for the backlog"
+        <>  Options.metavar "INTEGER"
+        <>  Options.value defaultBacklog
+        )
+
     path <- Options.strOption
         (   Options.long "socket"
         <>  Options.short 'S'
@@ -167,7 +178,10 @@ parseListen = do
 
     let parseUnixListen :: Parsec Void String Socket
         parseUnixListen = do
+            let backlog = defaultBacklog
+
             path <- Megaparsec.takeRest
+
             return Unix{..}
 
     let parseSocketListen = parseTcpListen <|> parseUnixListen

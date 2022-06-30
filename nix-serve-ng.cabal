@@ -15,16 +15,8 @@ executable nix-serve-ng
 
     main-is:          Main.hs
 
-    other-modules:    Sysctl
-                    , Nix
+    other-modules:    Nix
                     , Options
-
-    if os(darwin)
-      hs-source-dirs: darwin
-    elif os(linux)
-      hs-source-dirs: linux
-    else
-      buildable:      False
 
     -- https://nixos.org/manual/nix/stable/installation/supported-platforms.html
     if arch(i686) && os(linux)
@@ -49,7 +41,6 @@ executable nix-serve-ng
     build-depends:    base < 5
                     , base16
                     , base32
-                    , bsd-sysctl
                     , bytestring
                     , charset
                     , http-types

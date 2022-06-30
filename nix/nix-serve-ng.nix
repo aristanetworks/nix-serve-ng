@@ -1,7 +1,7 @@
-{ mkDerivation, base, base16, base32, bsd-sysctl, bytestring
-, charset, http-types, lib, managed, megaparsec, mtl, network
-, nixstore, nixutil, optparse-applicative, vector, wai, wai-extra
-, warp, warp-tls
+{ mkDerivation, base, base16, base32, bytestring, charset
+, http-types, lib, managed, megaparsec, mtl, network, nixstore
+, nixutil, optparse-applicative, vector, wai, wai-extra, warp
+, warp-tls
 }:
 mkDerivation {
   pname = "nix-serve-ng";
@@ -10,9 +10,8 @@ mkDerivation {
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [
-    base base16 base32 bsd-sysctl bytestring charset http-types managed
-    megaparsec mtl network optparse-applicative vector wai wai-extra
-    warp warp-tls
+    base base16 base32 bytestring charset http-types managed megaparsec
+    mtl network optparse-applicative vector wai wai-extra warp warp-tls
   ];
   executableSystemDepends = [ nixstore nixutil ];
   description = "A drop-in replacement for nix-serve that's faster and more stable";
