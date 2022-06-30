@@ -251,7 +251,7 @@ makeApplication ApplicationOptions{..} request respond = do
                     Nothing        -> noSuchPath
                     Just storePath -> return storePath
 
-                PathInfo{ narSize, narHash } <- liftIO (Nix.queryPathInfo storePath)
+                PathInfo{ narHash } <- liftIO (Nix.queryPathInfo storePath)
 
                 Monad.unless (all (narHash ==) maybeExpectedNarHash) do
                     let headers = [ ("Content-Type", "text/plain") ]
@@ -273,21 +273,31 @@ makeApplication ApplicationOptions{..} request respond = do
                     Nothing    -> noSuchPath
                     Just bytes -> return bytes
 
-                let contentLength =
-                        ( ByteString.Lazy.toStrict
-                        . Builder.toLazyByteString
-                        . Builder.word64Dec
-                        ) narSize
+                let lazyBytes = ByteString.Lazy.fromStrict bytes
 
-                let headers =
-                        [ ("Content-Type", "text/plain")
-                        , ("Content-Length", contentLength)
-                        ]
-
-                let builder = Builder.byteString bytes
+                let headers = [ ("Content-Type", "text/plain") ]
 
                 let response =
-                        Wai.responseBuilder Types.status200 headers builder
+                        Wai.responseLBS Types.status200 headers lazyBytes
+
+                done response
+
+            | Just suffix <- ByteString.stripPrefix "/log/" rawPath
+            , 32 <= ByteString.length suffix -> do
+                let hashPart = ByteString.take 32 suffix
+
+                maybeBytes <- liftIO (Nix.dumpLog hashPart)
+
+                bytes <- case maybeBytes of
+                    Nothing    -> noSuchPath
+                    Just bytes -> return bytes
+
+                let lazyBytes = ByteString.Lazy.fromStrict bytes
+
+                let headers = [ ("Content-Type", "text/plain") ]
+
+                let response =
+                        Wai.responseLBS Types.status200 headers lazyBytes
 
                 done response
 

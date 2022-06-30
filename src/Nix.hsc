@@ -275,3 +275,18 @@ dumpPath hashPart = do
                 if data_ == Foreign.nullPtr
                     then return Nothing
                     else fmap Just (fromString_ string_)
+
+foreign import ccall "dumpLog" dumpLog_
+    :: CString -> Ptr String_ -> IO ()
+
+dumpLog :: ByteString -> IO (Maybe ByteString)
+dumpLog hashPart = do
+    ByteString.useAsCString hashPart \cHashPart -> do
+        Foreign.alloca \output -> do
+            let open = dumpLog_ cHashPart output
+            let close = freeString output
+            Exception.bracket_ open close do
+                string_@String_{ data_} <- peek output
+                if data_ == Foreign.nullPtr
+                    then return Nothing
+                    else fmap Just (fromString_ string_)

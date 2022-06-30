@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <nix/store-api.hh>
+#include <nix/log-store.hh>
 #include "nix.hh"
 
 using namespace nix;
@@ -161,7 +162,8 @@ void signString
 void dumpPath(char const * const hashPart, struct string * const output) {
     ref<Store> store = getStore();
 
-    std::optional<StorePath> storePath= store->queryPathFromHashPart(hashPart);
+    std::optional<StorePath> storePath =
+        store->queryPathFromHashPart(hashPart);
 
     if (storePath.has_value()) {
         StringSink sink;
@@ -174,4 +176,30 @@ void dumpPath(char const * const hashPart, struct string * const output) {
     }
 }
 
+void dumpLog(char const * const hashPart, struct string * const output) {
+    ref<Store> store = getStore();
+
+    std::optional<StorePath> storePath =
+        store->queryPathFromHashPart(hashPart);
+
+    if (storePath.has_value()) {
+        auto subs = getDefaultSubstituters();
+
+        subs.push_front(store);
+
+        for (auto & sub : subs) {
+            LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
+
+            std::optional<std::string> log = logStore->getBuildLog(storePath.value());
+
+            if (log.has_value()) {
+                copyString(log.value(), output);
+            } else {
+                *output = emptyString;
+            }
+        }
+    } else {
+        *output = emptyString;
+    }
+}
 }
