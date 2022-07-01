@@ -1,6 +1,6 @@
 { mkDerivation, base, base16, base32, bytestring, charset
-, http-types, lib, managed, megaparsec, mtl, network, nixstore
-, nixutil, optparse-applicative, vector, wai, wai-extra, warp
+, http-types, managed, megaparsec, mtl, network, nix
+, optparse-applicative, stdenv, vector, wai, wai-extra, warp
 , warp-tls
 }:
 mkDerivation {
@@ -13,7 +13,7 @@ mkDerivation {
     base base16 base32 bytestring charset http-types managed megaparsec
     mtl network optparse-applicative vector wai wai-extra warp warp-tls
   ];
-  executableSystemDepends = [ nixstore nixutil ];
+  executablePkgconfigDepends = [ nix ];
   description = "A drop-in replacement for nix-serve that's faster and more stable";
-  license = lib.licenses.asl20;
+  license = stdenv.lib.licenses.asl20;
 }

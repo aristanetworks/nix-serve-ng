@@ -55,8 +55,8 @@ executable nix-serve-ng
                     , warp
                     , warp-tls
 
-    extra-libraries:  nixstore
-                    , nixutil
+    pkgconfig-depends:
+                      nix-store
 
     if os(darwin)
       extra-libraries: c++

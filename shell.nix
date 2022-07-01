@@ -12,10 +12,7 @@ let
           (haskellPackagesNew: haskellPackagesOld: {
             nix-serve-ng =
               pkgsNew.haskell.lib.overrideCabal
-                (haskellPackagesNew.callPackage ./nix/nix-serve-ng.nix {
-                  nixstore = pkgsNew.nix;
-                  nixutil = pkgsNew.nix;
-                })
+                (haskellPackagesNew.callPackage ./nix/nix-serve-ng.nix { })
                 (old: {
                   executableSystemDepends = (old.executableSystemDepends or []) ++ [
                     pkgsNew.boost.dev
