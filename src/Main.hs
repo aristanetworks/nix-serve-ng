@@ -178,7 +178,7 @@ makeApplication ApplicationOptions{..} request respond = do
                         <>  Builder.byteString hashPart
                         <>  "-"
                         <>  Builder.byteString narHash2
-                        <>  "\nCompression: none\nNarHash: "
+                        <>  ".nar\nCompression: none\nNarHash: "
                         <>  Builder.byteString narHash
                         <>  "\nNarSize: "
                         <>  Builder.word64Dec narSize
