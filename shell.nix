@@ -1,4 +1,9 @@
 let
+  nixpkgs = builtins.fetchTarball {
+    url    = "https://github.com/NixOS/nixpkgs/archive/87d9c84817d7be81850c07e8f6a362b1dfc30feb.tar.gz";
+    sha256 = "0pcasnmdbs2lrsp4m8ww06xd7b318agfygi61qjsizb328nxhcqa";
+  };
+
   overlay = pkgsNew: pkgsOld: {
     haskellPackages = pkgsOld.haskellPackages.override (old: {
       overrides =
@@ -20,9 +25,7 @@ let
     });
   };
 
-  config.allowBroken = true;
-
-  pkgs = import <nixpkgs> { inherit config; overlays = [ overlay ]; };
+  pkgs = import nixpkgs { config = { }; overlays = [ overlay ]; };
 
 in
   pkgs.haskellPackages.nix-serve-ng.env
