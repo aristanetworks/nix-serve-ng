@@ -73,16 +73,16 @@ instance Storable Strings where
     alignment _ = #{alignment struct strings}
 
     peek pointer = do
-        data_ <- #{peek struct string, data} pointer
+        data_ <- #{peek struct strings, data} pointer
 
-        size <- #{peek struct string, size} pointer
+        size <- #{peek struct strings, size} pointer
 
         return Strings{ data_, size }
 
     poke pointer Strings{ data_, size } = do
-        #{poke struct string, data} pointer data_
+        #{poke struct strings, data} pointer data_
 
-        #{poke struct string, size} pointer size
+        #{poke struct strings, size} pointer size
 
 fromStrings :: Strings -> IO (Vector ByteString)
 fromStrings Strings{ data_, size} = do
