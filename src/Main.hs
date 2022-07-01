@@ -88,23 +88,26 @@ makeApplication ApplicationOptions{..} request respond = do
 
             done response
 
+    let invalidPath = do
+            let headers = [ ("Content-Type", "text/plain") ]
+
+            let builder = "Invalid path.\n"
+
+            let response =
+                    Wai.responseBuilder
+                        Types.status400
+                        headers
+                        builder
+
+            done response
+
     result <- Except.runExceptT do
         let rawPath = Wai.rawPathInfo request
 
         if  | Just prefix <- ByteString.stripSuffix ".narinfo" rawPath
             , Just hashPart <- ByteString.stripPrefix "/" prefix -> do
                 Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
-                    let headers = [ ("Content-Type", "text/plain") ]
-
-                    let builder = "Invalid hash part.\n"
-
-                    let response =
-                            Wai.responseBuilder
-                                Types.status400
-                                headers
-                                builder
-
-                    done response
+                    invalidPath
 
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
@@ -219,30 +222,10 @@ makeApplication ApplicationOptions{..} request respond = do
                         return (interior, Nothing)
 
                     | otherwise -> do
-                        let headers = [ ("Content-Type", "text/plain") ]
-
-                        let builder = "Invalid path component.\n"
-
-                        let response =
-                                Wai.responseBuilder
-                                    Types.status400
-                                    headers
-                                    builder
-
-                        done response
+                        invalidPath
 
                 Monad.unless (validHashPart hashPart) do
-                    let headers = [ ("Content-Type", "text/plain") ]
-
-                    let builder = "Invalid hash part.\n"
-
-                    let response =
-                            Wai.responseBuilder
-                                Types.status400
-                                headers
-                                builder
-
-                    done response
+                    invalidPath
 
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
@@ -281,11 +264,14 @@ makeApplication ApplicationOptions{..} request respond = do
 
                 done response
 
-            | Just suffix <- ByteString.stripPrefix "/log/" rawPath
-            , 32 <= ByteString.length suffix -> do
+            | Just suffix <- ByteString.stripPrefix "/log/" rawPath -> do
                 let hashPart = ByteString.take 32 suffix
 
-                maybeBytes <- liftIO (Nix.dumpLog hashPart)
+                Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
+                    invalidPath
+
+                liftIO (print suffix)
+                maybeBytes <- liftIO (Nix.dumpLog suffix)
 
                 bytes <- case maybeBytes of
                     Nothing    -> noSuchPath

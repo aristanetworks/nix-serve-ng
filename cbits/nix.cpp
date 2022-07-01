@@ -176,30 +176,26 @@ void dumpPath(char const * const hashPart, struct string * const output) {
     }
 }
 
-void dumpLog(char const * const hashPart, struct string * const output) {
+void dumpLog(char const * const baseName, struct string * const output) {
     ref<Store> store = getStore();
 
-    std::optional<StorePath> storePath =
-        store->queryPathFromHashPart(hashPart);
+    StorePath storePath(baseName);
 
-    if (storePath.has_value()) {
-        auto subs = getDefaultSubstituters();
+    auto subs = getDefaultSubstituters();
 
-        subs.push_front(store);
+    subs.push_front(store);
 
-        for (auto & sub : subs) {
-            LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
+    *output = emptyString;
 
-            std::optional<std::string> log = logStore->getBuildLog(storePath.value());
+    for (auto & sub : subs) {
+        LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
 
-            if (log.has_value()) {
-                copyString(log.value(), output);
-            } else {
-                *output = emptyString;
-            }
+        std::optional<std::string> log = logStore->getBuildLog(storePath);
+
+        if (log.has_value()) {
+            copyString(log.value(), output);
         }
-    } else {
-        *output = emptyString;
     }
 }
+
 }

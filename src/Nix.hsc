@@ -280,10 +280,10 @@ foreign import ccall "dumpLog" dumpLog_
     :: CString -> Ptr String_ -> IO ()
 
 dumpLog :: ByteString -> IO (Maybe ByteString)
-dumpLog hashPart = do
-    ByteString.useAsCString hashPart \cHashPart -> do
+dumpLog baseName = do
+    ByteString.useAsCString baseName \cBaseName -> do
         Foreign.alloca \output -> do
-            let open = dumpLog_ cHashPart output
+            let open = dumpLog_ cBaseName output
             let close = freeString output
             Exception.bracket_ open close do
                 string_@String_{ data_} <- peek output
