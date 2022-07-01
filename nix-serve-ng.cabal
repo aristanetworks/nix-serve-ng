@@ -36,7 +36,7 @@ executable nix-serve-ng
 
     cxx-sources:      cbits/nix.cpp
 
-    cxx-options:      -std=c++17
+    cpp-options:      -std=c++17
 
     build-depends:    base < 5
                     , base16
