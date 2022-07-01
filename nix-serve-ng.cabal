@@ -57,7 +57,13 @@ executable nix-serve-ng
 
     extra-libraries:  nixstore
                     , nixutil
-                    , c++
+
+    if os(darwin)
+      extra-libraries: c++
+    elif os(linux)
+      extra-libraries: stdc++
+    else
+      buildable:      False
 
     default-language: Haskell2010
 
