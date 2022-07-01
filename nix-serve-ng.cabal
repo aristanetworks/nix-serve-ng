@@ -10,7 +10,7 @@ author:             Arista Networks
 maintainer:         opensource@awakesecurity.com
 copyright:          2022 Arista Networks
 
-executable nix-serve-ng
+executable nix-serve
     hs-source-dirs:   src
 
     main-is:          Main.hs
