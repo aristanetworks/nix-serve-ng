@@ -61,7 +61,8 @@
 
           defaultApp = apps.default;
 
-          devShells.default = pkgs.haskellPackages.nix-serve-ng.env;
+          devShells.default =
+            (pkgs.haskell.lib.doBenchmark pkgs.haskellPackages.nix-serve-ng).env;
 
           devShell = devShells.default;
         });

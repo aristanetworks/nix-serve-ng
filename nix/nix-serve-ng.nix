@@ -1,6 +1,7 @@
-{ mkDerivation, base, base16, base32, bytestring, charset
-, http-types, lib, managed, megaparsec, mtl, network, nix
-, optparse-applicative, vector, wai, wai-extra, warp, warp-tls
+{ mkDerivation, async, base, base16, base32, bytestring, charset
+, http-client, http-types, managed, megaparsec, mtl, network, nix
+, optparse-applicative, stdenv, tasty-bench, temporary, turtle
+, vector, wai, wai-extra, warp, warp-tls
 }:
 mkDerivation {
   pname = "nix-serve-ng";
@@ -13,6 +14,10 @@ mkDerivation {
     mtl network optparse-applicative vector wai wai-extra warp warp-tls
   ];
   executablePkgconfigDepends = [ nix ];
+  benchmarkHaskellDepends = [
+    async base bytestring http-client tasty-bench temporary turtle
+    vector
+  ];
   description = "A drop-in replacement for nix-serve that's faster and more stable";
-  license = lib.licenses.asl20;
+  license = stdenv.lib.licenses.asl20;
 }
