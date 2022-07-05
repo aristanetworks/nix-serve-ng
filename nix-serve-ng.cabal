@@ -4,7 +4,7 @@ version:            1.0.0
 synopsis:
     A drop-in replacement for nix-serve that's faster and more stable
 
-license:            Apache-2.0
+license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Arista Networks
 maintainer:         opensource@awakesecurity.com
