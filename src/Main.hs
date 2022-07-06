@@ -270,7 +270,6 @@ makeApplication ApplicationOptions{..} request respond = do
                 Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
                     invalidPath
 
-                liftIO (print suffix)
                 maybeBytes <- liftIO (Nix.dumpLog suffix)
 
                 bytes <- case maybeBytes of
