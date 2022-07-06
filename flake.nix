@@ -16,8 +16,8 @@
           haskellPackages = pkgsOld.haskellPackages.override (old: {
             overrides =
               pkgsNew.lib.fold pkgsNew.lib.composeExtensions (old.overrides or (_: _: { })) [
-                (pkgsNew.haskell.lib.packagesFromDirectory {
-                  directory = ./nix;
+                (pkgsNew.haskell.lib.packageSourceOverrides {
+                  nix-serve-ng = ./.;
                 })
                 (haskellPackagesNew: haskellPackagesOld: {
                   nix-serve-ng =
