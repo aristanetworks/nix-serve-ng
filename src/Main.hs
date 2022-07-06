@@ -334,7 +334,7 @@ readSecretKey = fmap ByteString.Char8.strip . ByteString.readFile
 
 main :: IO ()
 main = do
-    options@Options{ priority, verbosity } <- do
+    options@Options{ priority, timeout, verbosity } <- do
         Options.execParser Options.parserInfo
 
     storeDirectory <- Nix.getStoreDir
@@ -351,27 +351,29 @@ main = do
 
     let application = logger (makeApplication ApplicationOptions{..})
 
+    let sharedSettings =
+            Warp.defaultSettings
+                & Warp.setTimeout (fromIntegral timeout)
+
     case options of
         Options{ ssl = Disabled, socket = TCP{ host, port } } -> do
             let settings =
-                    Warp.defaultSettings
+                    sharedSettings
                         & Warp.setHost host
                         & Warp.setPort port
 
             Warp.runSettings settings application
 
         Options{ ssl = Disabled, socket = Unix{ backlog, path } } -> do
-            let settings = Warp.defaultSettings
-
             socket <- toSocket backlog path
 
-            Warp.runSettingsSocket settings socket application
+            Warp.runSettingsSocket sharedSettings socket application
 
         Options{ ssl = Enabled{ cert, key }, socket = TCP{ host, port } } -> do
             let tlsSettings = WarpTLS.tlsSettings cert key
 
             let settings =
-                    Warp.defaultSettings
+                    sharedSettings
                         & Warp.setHost host
                         & Warp.setPort port
 
@@ -380,8 +382,6 @@ main = do
         Options{ ssl = Enabled{ cert, key }, socket = Unix{ backlog, path } } -> do
             let tlsSettings = WarpTLS.tlsSettings cert key
 
-            let settings = Warp.defaultSettings
-
             socket <- toSocket backlog path
 
-            WarpTLS.runTLSSocket tlsSettings settings socket application
+            WarpTLS.runTLSSocket tlsSettings sharedSettings socket application

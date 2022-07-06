@@ -29,6 +29,7 @@ data Options = Options
     { priority  :: Integer
     , socket    :: Socket
     , ssl       :: SSL
+    , timeout   :: Natural
     , verbosity :: Verbosity
     }
 
@@ -128,6 +129,17 @@ parsePriority =
         <>  Options.value 30
         )
 
+parseTimeout :: Parser Natural
+parseTimeout =
+    Options.option Options.auto
+        (   Options.long "timeout"
+        <>  Options.help "Timeout for requests"
+        <>  Options.metavar "SECONDS"
+            -- nix-serve does not timeout requests, but warp insists on a
+            -- timeout, so we use the same default timeout as hydra
+        <>  Options.value (10 * 60)
+        )
+
 parseVerbosity :: Parser Verbosity
 parseVerbosity =
         Options.flag' Quiet
@@ -147,6 +159,8 @@ parseOptions = do
     ssl <- parseSsl
 
     priority <- parsePriority
+
+    timeout <- parseTimeout
 
     verbosity <- parseVerbosity
 
@@ -197,6 +211,8 @@ parseListen = do
         )
 
     priority <- parsePriority
+
+    timeout <- parseTimeout
 
     verbosity <- parseVerbosity
 
