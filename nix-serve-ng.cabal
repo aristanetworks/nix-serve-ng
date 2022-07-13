@@ -36,7 +36,7 @@ executable nix-serve
 
     cxx-sources:      cbits/nix.cpp
 
-    cpp-options:      -std=c++17
+    cxx-options:      -std=c++17
 
     build-depends:    base < 5
                     , base16
