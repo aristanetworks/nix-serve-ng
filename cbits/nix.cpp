@@ -159,9 +159,9 @@ void signString
     copyString(signature, output);
 }
 
-void dumpPath
+bool dumpPath
     ( char const * const hashPart
-    , void (* const callback)(struct string const * const)
+    , bool (* const callback)(struct string const * const)
     )
 {
     ref<Store> store = getStore();
@@ -173,13 +173,27 @@ void dumpPath
         LambdaSink sink([=](std::string_view v) {
             struct string s = { .data = v.data(), .size = v.size() };
 
-            // TODO: Fail robustly if callback throws a Haskell exception
-            (*callback)(&s);
+            bool succeeded = (*callback)(&s);
+
+            if (!succeeded) {
+                // We don't really care about the error message.  The only
+                // reason for throwing an exception here is that this is the
+                // only way that a Nix sink can exit early.
+                throw std::runtime_error("");
+            }
         });
 
-        store->narFromPath(storePath.value(), sink);
+        try {
+            store->narFromPath(storePath.value(), sink);
+        } catch (const std::runtime_error & e) {
+            // Intentionally do nothing.  We're only using the exception as a
+            // short-circuiting mechanism.
+        }
+
+        return true;
+    } else {
+        return false;
     }
-    // TODO: Handle absent value
 }
 
 void dumpLog(char const * const baseName, struct string * const output) {

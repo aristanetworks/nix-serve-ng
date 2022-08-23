@@ -1,4 +1,6 @@
 {-# LANGUAGE BlockArguments           #-}
+{-# LANGUAGE DeriveAnyClass           #-}
+{-# LANGUAGE DerivingStrategies       #-}
 {-# LANGUAGE DuplicateRecordFields    #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE MultiWayIf               #-}
@@ -9,6 +11,7 @@
 module Nix where
 
 import Control.Applicative (empty)
+import Control.Exception (Exception, SomeException)
 import Control.Monad.Managed (Managed)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
@@ -18,11 +21,13 @@ import Foreign (FunPtr, Ptr, Storable(..))
 import Foreign.C (CChar, CLong, CSize, CString)
 
 import qualified Control.Exception       as Exception
+import qualified Control.Monad           as Monad
 import qualified Control.Monad.Managed   as Managed
 import qualified Data.ByteString         as ByteString
 import qualified Data.ByteString.Base16  as Base16
 import qualified Data.ByteString.Base32  as Base32
 import qualified Data.ByteString.Builder as Builder
+import qualified Data.IORef              as IORef
 import qualified Data.Vector             as Vector
 import qualified Data.Vector.Storable    as Vector.Storable
 import qualified Foreign
@@ -153,7 +158,7 @@ data PathInfo = PathInfo
     , narSize    :: Word64
     , references :: Vector ByteString
     , sigs       :: Vector ByteString
-    } deriving (Show)
+    } deriving stock (Show)
 
 fromCPathInfo :: CPathInfo -> IO PathInfo
 fromCPathInfo CPathInfo{ deriver, narHash, narSize, references, sigs } = do
@@ -187,10 +192,14 @@ getStoreDir =
             string_ <- peek output
             fromString_ string_
 
+data NoSuchPath = NoSuchPath
+    deriving anyclass (Exception)
+    deriving stock (Show)
+
 foreign import ccall "queryPathFromHashPart" queryPathFromHashPart_
     :: CString -> Ptr String_ -> IO ()
 
-queryPathFromHashPart :: ByteString -> IO (Maybe ByteString)
+queryPathFromHashPart :: ByteString -> IO (Either NoSuchPath ByteString)
 queryPathFromHashPart hashPart = do
     ByteString.useAsCString hashPart \cHashPart -> do
         Foreign.alloca \output -> do
@@ -199,8 +208,8 @@ queryPathFromHashPart hashPart = do
             Exception.bracket_ open close do
                 string_@String_{ data_} <- peek output
                 if data_ == Foreign.nullPtr
-                    then return Nothing
-                    else fmap Just (fromString_ string_)
+                    then return (Left NoSuchPath)
+                    else fmap Right (fromString_ string_)
 
 foreign import ccall "queryPathInfo" queryPathInfo_
     :: CString -> Ptr CPathInfo -> IO ()
@@ -262,20 +271,36 @@ signString secretKey fingerprint =
                     fromString_ string_
 
 foreign import ccall "dumpPath" dumpPath_
-    :: CString -> FunPtr (Ptr String_ -> IO ()) -> IO ()
+    :: CString -> FunPtr (Ptr String_ -> IO Bool) -> IO Bool
 
-dumpPath :: ByteString -> (Builder -> IO ()) -> IO ()
+dumpPath :: ByteString -> (Builder -> IO ()) -> IO (Either SomeException ())
 dumpPath hashPart builderCallback = do
-    let cCallback :: Ptr String_ -> IO ()
+    result <- IORef.newIORef (Right ())
+
+    let cCallback :: Ptr String_ -> IO Bool
         cCallback pointer = do
             string_ <- Foreign.peek pointer
+
             byteString <- fromString_ string_
-            builderCallback (Builder.byteString byteString)
+
+            let handler :: SomeException -> IO Bool
+                handler exception = do
+                    IORef.writeIORef result (Left exception)
+                    return False
+
+            Exception.handle handler do
+                builderCallback (Builder.byteString byteString)
+                return True
 
     wrappedCCallback <- wrapCallback cCallback
 
     ByteString.useAsCString hashPart \cHashPart -> do
-        dumpPath_ cHashPart wrappedCCallback
+        success <- dumpPath_ cHashPart wrappedCCallback
+
+        Monad.when (not success) do
+            IORef.writeIORef result (Left (Exception.toException NoSuchPath))
+
+    IORef.readIORef result
 
 foreign import ccall "dumpLog" dumpLog_
     :: CString -> Ptr String_ -> IO ()
@@ -293,4 +318,4 @@ dumpLog baseName = do
                     else fmap Just (fromString_ string_)
 
 foreign import ccall "wrapper" wrapCallback
-    :: (Ptr String_ -> IO ()) -> IO (FunPtr (Ptr String_ -> IO ()))
+    :: (Ptr String_ -> IO Bool) -> IO (FunPtr (Ptr String_ -> IO Bool))
