@@ -14,7 +14,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Vector (Vector)
 import Data.Word (Word64)
-import Foreign (Ptr, Storable(..))
+import Foreign (FunPtr, Ptr, Storable(..))
 import Foreign.C (CChar, CLong, CSize, CString)
 
 import qualified Control.Exception       as Exception
@@ -262,19 +262,20 @@ signString secretKey fingerprint =
                     fromString_ string_
 
 foreign import ccall "dumpPath" dumpPath_
-    :: CString -> Ptr String_ -> IO ()
+    :: CString -> FunPtr (Ptr String_ -> IO ()) -> IO ()
 
-dumpPath :: ByteString -> IO (Maybe ByteString)
-dumpPath hashPart = do
+dumpPath :: ByteString -> (Builder -> IO ()) -> IO ()
+dumpPath hashPart builderCallback = do
+    let cCallback :: Ptr String_ -> IO ()
+        cCallback pointer = do
+            string_ <- Foreign.peek pointer
+            byteString <- fromString_ string_
+            builderCallback (Builder.byteString byteString)
+
+    wrappedCCallback <- wrapCallback cCallback
+
     ByteString.useAsCString hashPart \cHashPart -> do
-        Foreign.alloca \output -> do
-            let open = dumpPath_ cHashPart output
-            let close = freeString output
-            Exception.bracket_ open close do
-                string_@String_{ data_} <- peek output
-                if data_ == Foreign.nullPtr
-                    then return Nothing
-                    else fmap Just (fromString_ string_)
+        dumpPath_ cHashPart wrappedCCallback
 
 foreign import ccall "dumpLog" dumpLog_
     :: CString -> Ptr String_ -> IO ()
@@ -290,3 +291,6 @@ dumpLog baseName = do
                 if data_ == Foreign.nullPtr
                     then return Nothing
                     else fmap Just (fromString_ string_)
+
+foreign import ccall "wrapper" wrapCallback
+    :: (Ptr String_ -> IO ()) -> IO (FunPtr (Ptr String_ -> IO ()))

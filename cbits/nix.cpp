@@ -159,21 +159,27 @@ void signString
     copyString(signature, output);
 }
 
-void dumpPath(char const * const hashPart, struct string * const output) {
+void dumpPath
+    ( char const * const hashPart
+    , void (* const callback)(struct string const * const)
+    )
+{
     ref<Store> store = getStore();
 
     std::optional<StorePath> storePath =
         store->queryPathFromHashPart(hashPart);
 
     if (storePath.has_value()) {
-        StringSink sink;
+        LambdaSink sink([=](std::string_view v) {
+            struct string s = { .data = v.data(), .size = v.size() };
+
+            // TODO: Fail robustly if callback throws a Haskell exception
+            (*callback)(&s);
+        });
 
         store->narFromPath(storePath.value(), sink);
-
-        copyString(sink.s, output);
-    } else {
-        *output = emptyString;
     }
+    // TODO: Handle absent value
 }
 
 void dumpLog(char const * const baseName, struct string * const output) {

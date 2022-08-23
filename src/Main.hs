@@ -249,18 +249,16 @@ makeApplication ApplicationOptions{..} request respond = do
 
                     done response
 
-                maybeBytes <- liftIO (Nix.dumpPath hashPart)
-
-                bytes <- case maybeBytes of
-                    Nothing    -> noSuchPath
-                    Just bytes -> return bytes
-
-                let lazyBytes = ByteString.Lazy.fromStrict bytes
+                let streamingBody write flush = Nix.dumpPath hashPart callback
+                      where
+                        callback builder = do
+                            () <- write builder
+                            flush
 
                 let headers = [ ("Content-Type", "text/plain") ]
 
                 let response =
-                        Wai.responseLBS Types.status200 headers lazyBytes
+                        Wai.responseStream Types.status200 headers streamingBody
 
                 done response
 
