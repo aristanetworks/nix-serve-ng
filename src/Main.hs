@@ -12,10 +12,11 @@ import Data.CharSet.ByteSet (ByteSet(..))
 import Data.Function ((&))
 import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
-import Nix (PathInfo(..))
+import Nix (NoSuchPath(..), PathInfo(..))
 import Numeric.Natural (Natural)
 import Options (Options(..), Socket(..), SSL(..), Verbosity(..))
 
+import qualified Control.Exception                    as Exception
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
 import qualified Data.ByteString                      as ByteString
@@ -112,8 +113,8 @@ makeApplication ApplicationOptions{..} request respond = do
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
                 storePath <- case maybeStorePath of
-                    Nothing        -> noSuchPath
-                    Just storePath -> return storePath
+                    Left NoSuchPath -> noSuchPath
+                    Right storePath -> return storePath
 
                 pathInfo@PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
 
@@ -230,8 +231,8 @@ makeApplication ApplicationOptions{..} request respond = do
                 maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
 
                 storePath <- case maybeStorePath of
-                    Nothing        -> noSuchPath
-                    Just storePath -> return storePath
+                    Left  NoSuchPath-> noSuchPath
+                    Right storePath -> return storePath
 
                 PathInfo{ narHash } <- liftIO (Nix.queryPathInfo storePath)
 
@@ -249,18 +250,21 @@ makeApplication ApplicationOptions{..} request respond = do
 
                     done response
 
-                maybeBytes <- liftIO (Nix.dumpPath hashPart)
+                let streamingBody write flush = do
+                       result <- Nix.dumpPath hashPart callback
 
-                bytes <- case maybeBytes of
-                    Nothing    -> noSuchPath
-                    Just bytes -> return bytes
-
-                let lazyBytes = ByteString.Lazy.fromStrict bytes
+                       case result of
+                           Left  exception -> Exception.throwIO exception
+                           Right x         -> return x
+                      where
+                        callback builder = do
+                            () <- write builder
+                            flush
 
                 let headers = [ ("Content-Type", "text/plain") ]
 
                 let response =
-                        Wai.responseLBS Types.status200 headers lazyBytes
+                        Wai.responseStream Types.status200 headers streamingBody
 
                 done response
 

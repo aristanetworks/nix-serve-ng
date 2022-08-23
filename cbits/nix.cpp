@@ -159,20 +159,40 @@ void signString
     copyString(signature, output);
 }
 
-void dumpPath(char const * const hashPart, struct string * const output) {
+bool dumpPath
+    ( char const * const hashPart
+    , bool (* const callback)(struct string const * const)
+    )
+{
     ref<Store> store = getStore();
 
     std::optional<StorePath> storePath =
         store->queryPathFromHashPart(hashPart);
 
     if (storePath.has_value()) {
-        StringSink sink;
+        LambdaSink sink([=](std::string_view v) {
+            struct string s = { .data = v.data(), .size = v.size() };
 
-        store->narFromPath(storePath.value(), sink);
+            bool succeeded = (*callback)(&s);
 
-        copyString(sink.s, output);
+            if (!succeeded) {
+                // We don't really care about the error message.  The only
+                // reason for throwing an exception here is that this is the
+                // only way that a Nix sink can exit early.
+                throw std::runtime_error("");
+            }
+        });
+
+        try {
+            store->narFromPath(storePath.value(), sink);
+        } catch (const std::runtime_error & e) {
+            // Intentionally do nothing.  We're only using the exception as a
+            // short-circuiting mechanism.
+        }
+
+        return true;
     } else {
-        *output = emptyString;
+        return false;
     }
 }
 
