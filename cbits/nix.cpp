@@ -161,7 +161,7 @@ void signString
 
 bool dumpPath
     ( char const * const hashPart
-    , bool (* const callback)(struct string const * const)
+    , bool (* const callback)(char const * const data, size_t const size)
     )
 {
     ref<Store> store = getStore();
@@ -171,9 +171,7 @@ bool dumpPath
 
     if (storePath.has_value()) {
         LambdaSink sink([=](std::string_view v) {
-            struct string s = { .data = v.data(), .size = v.size() };
-
-            bool succeeded = (*callback)(&s);
+            bool succeeded = (*callback)(v.data(), v.size());
 
             if (!succeeded) {
                 // We don't really care about the error message.  The only
