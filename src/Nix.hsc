@@ -18,7 +18,7 @@ import Data.ByteString.Builder (Builder)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Foreign (FunPtr, Ptr, Storable(..))
-import Foreign.C (CChar, CLong, CSize, CString)
+import Foreign.C (CChar, CLong, CSize(..), CString)
 
 import qualified Control.Exception       as Exception
 import qualified Control.Monad           as Monad
@@ -271,25 +271,41 @@ signString secretKey fingerprint =
                     fromString_ string_
 
 foreign import ccall "dumpPath" dumpPath_
-    :: CString -> FunPtr (Ptr String_ -> IO Bool) -> IO Bool
+    :: CString -> FunPtr (Ptr CChar -> CSize -> IO Bool) -> IO Bool
 
 dumpPath :: ByteString -> (Builder -> IO ()) -> IO (Either SomeException ())
 dumpPath hashPart builderCallback = do
     result <- IORef.newIORef (Right ())
 
-    let cCallback :: Ptr String_ -> IO Bool
-        cCallback pointer = do
-            string_ <- Foreign.peek pointer
-
-            byteString <- fromString_ string_
-
+    let cCallback :: Ptr CChar -> CSize -> IO Bool
+        cCallback pointer cSize = do
             let handler :: SomeException -> IO Bool
                 handler exception = do
                     IORef.writeIORef result (Left exception)
                     return False
 
             Exception.handle handler do
+                -- At the time of this writing Nix uses a maximum chunk size of
+                -- 64 kibibytes, which could potentially increase in the future.
+                -- However:
+                --
+                -- • Data.Int.Int guarantees `maxBound :: Int` supports at least
+                --   128 mebibytes
+                -- • The latest version of GHC sets `maxBound :: Int` to
+                --   support at least 2 gibibytes
+                -- • On 64-bit systems (almost all systems nowadays)
+                --   `maxBound :: Int` supports 8 exbibytes
+                --
+                -- … so even though this conversion could potentially overflow,
+                -- it's unlikely to happen (and it's not even clear what we
+                -- would do to fix the overflow anyway since the `bytestring`
+                -- package requires an `Int` size).
+                let len = fromIntegral @CSize @Int cSize
+
+                byteString <- ByteString.packCStringLen (pointer, len)
+
                 builderCallback (Builder.byteString byteString)
+
                 return True
 
     wrappedCCallback <- wrapCallback cCallback
@@ -318,4 +334,4 @@ dumpLog baseName = do
                     else fmap Just (fromString_ string_)
 
 foreign import ccall "wrapper" wrapCallback
-    :: (Ptr String_ -> IO Bool) -> IO (FunPtr (Ptr String_ -> IO Bool))
+    :: (Ptr CChar -> CSize -> IO Bool) -> IO (FunPtr (Ptr CChar -> CSize -> IO Bool))
