@@ -1,6 +1,16 @@
 {-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-| To benchmark `nix-serve-ng`, run the following commands:
+
+    > $ nix build
+    > $ PATH="./result/bin:${PATH}" cabal v1-bench --benchmark-option=--time-mode=wall
+
+    You can compare against the old `nix-serve` by changing the first command
+    to:
+
+    > $ nix build --file '<nixpkgs>' nix-serve
+-}
 module Main where
 
 import Control.Applicative (empty)

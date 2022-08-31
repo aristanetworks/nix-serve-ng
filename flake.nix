@@ -1,5 +1,5 @@
 { inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs/22.05;
+    nixpkgs.url = github:NixOS/nixpkgs/master;
 
     utils.url = github:numtide/flake-utils;
 
