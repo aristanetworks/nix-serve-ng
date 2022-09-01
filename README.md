@@ -51,6 +51,8 @@ let
 in
   { ... }: {
     imports = [ nix-serve-ng.nixosModules.default ];
+
+    …
   }
 ```
 
@@ -163,3 +165,11 @@ Did we satisfy those requirements?
       * `--pid`
 
       * `--error-log`
+
+  Because of this backwards-compatibility you only need to replace the old
+  `nix-serve` executable with the `nix-serve` executable built by this package
+  (which is what the included NixOS module does).
+
+  You don't need to define or use any new NixOS options.  You continue to use
+  the old `services.nix-serve` options hierarchy to configure the upgraded
+  service.
