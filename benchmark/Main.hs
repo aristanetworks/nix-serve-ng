@@ -30,8 +30,8 @@ import qualified System.IO.Temp as Temp
 import qualified Test.Tasty.Bench as Bench
 import qualified Turtle
 
-prepare :: Natural -> IO (Vector FilePath)
-prepare maxSize =
+prepareMixed :: Natural -> IO (Vector FilePath)
+prepareMixed maxSize =
     Temp.withSystemTempFile "zeros" \tempFile handle -> do
         IO.hClose handle
 
@@ -53,6 +53,22 @@ prepare maxSize =
                 return (Text.unpack (Turtle.lineToText text))
 
         Vector.generateM (fromIntegral numFiles) generate
+
+prepareConstant :: Natural -> IO (Vector FilePath)
+prepareConstant size =
+    Temp.withSystemTempFile "zeros" \tempFile handle -> do
+        IO.hClose handle
+
+        ByteString.writeFile tempFile (ByteString.replicate (fromIntegral size) 0)
+
+        text <- Turtle.single do
+            Turtle.inproc "nix-store"
+                [ "--add", Text.pack tempFile ]
+                empty
+
+        let path = Text.unpack (Turtle.lineToText text)
+
+        return (Vector.replicate (fromIntegral numFiles) path)
 
 port :: Int
 port = 8000
@@ -100,12 +116,18 @@ main = do
                 return (HTTP.responseBody response)
 
         Bench.defaultMain
-            [ Bench.env (prepare 1000000) \files -> do
+            [ Bench.env (prepareMixed 10000000) \files -> do
                 Bench.bench ("fetch present NAR info ×" <> show numFiles)
                     (Bench.nfAppIO (traverse_ fetchNarInfo) files)
             , Bench.bench "fetch absent NAR info ×1"
                 (Bench.nfAppIO fetchNarInfo "/nix/store/00000000000000000000000000000000")
-            , Bench.env (prepare 1000000) \files -> do
-                Bench.bench ("fetch present NAR ×" <> show numFiles)
+            , Bench.env (prepareConstant 0) \files -> do
+                Bench.bench ("fetch empty NAR ×" <> show numFiles)
+                    (Bench.nfAppIO (traverse_ fetchNar) files)
+            , Bench.env (prepareConstant 10000000) \files -> do
+                Bench.bench ("fetch 10 MB NAR ×" <> show numFiles)
+                    (Bench.nfAppIO (traverse_ fetchNar) files)
+            , Bench.env (prepareMixed 10000000) \files -> do
+                Bench.bench ("fetch NARs of mixed sizes up to 10 MB ×" <> show numFiles)
                     (Bench.nfAppIO (traverse_ fetchNar) files)
             ]
