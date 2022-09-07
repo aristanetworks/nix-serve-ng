@@ -90,7 +90,7 @@
         #
         # You can continue to use the old `services.nix-serve` NixOS options.
         nixosModules.default = {
-          nixpkgs.overlays = overlays.default;
+          nixpkgs.overlays = overlays.override;
         };
       };
 }
