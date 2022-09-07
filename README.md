@@ -41,9 +41,9 @@ like this:
 let
   nix-serve-ng-src = builtins.fetchTarball {
     # Replace the URL and hash with whatever you actually need
-    url    = "https://github.com/aristanetworks/nix-serve-ng/archive/166672a78f20e4ec58b0a9748f4f04fc9f341ea3.tar.gz";
+    url    = "https://github.com/aristanetworks/nix-serve-ng/archive/1937593598bb1285b41804f25cd6f9ddd4d5f1cb.tar.gz";
 
-    sha256 = "0giib41mjb1j91an1qwpgh94bvrn841azdjv082kwd4kcjhms52h";
+    sha256 = "1lqd207gbx1wjbhky33d2r8xi6avfbx4v0kpsvn84zaanifdgz2g";
   };
 
   nix-serve-ng = import nix-serve-ng-src;
