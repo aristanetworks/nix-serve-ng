@@ -19,9 +19,7 @@ executable nix-serve
                     , Options
 
     -- https://nixos.org/manual/nix/stable/installation/supported-platforms.html
-    if arch(i686) && os(linux)
-      cxx-options:    -DSYSTEM="i686-linux"
-    elif arch(x86_64) && os(linux)
+    if arch(x86_64) && os(linux)
       cxx-options:    -DSYSTEM="x86_64-linux"
     elif arch(aarch64) && os(linux)
       cxx-options:    -DSYSTEM="aarch64-linux"
