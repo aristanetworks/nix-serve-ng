@@ -58,7 +58,7 @@
             apps.default = {
               type = "app";
 
-              program = "${nix-serve-ng}/bin/nix-serve-ng";
+              program = "${nix-serve-ng}/bin/nix-serve";
             };
 
             defaultApp = apps.default;
