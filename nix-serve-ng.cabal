@@ -33,6 +33,7 @@ executable nix-serve
     include-dirs:     cbits
 
     cxx-sources:      cbits/nix.cpp
+                    , cbits/nix.hh
 
     cxx-options:      -std=c++17
 
