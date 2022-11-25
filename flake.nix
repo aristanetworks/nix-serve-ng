@@ -12,6 +12,10 @@
   outputs = { nixpkgs, utils, ... }:
     let
       overlay = pkgsNew: pkgsOld: {
+        cabal2nix-unwrapped =
+          pkgsNew.haskell.lib.justStaticExecutables
+            pkgsNew.haskell.packages.ghc92.cabal2nix;
+
         haskellPackages = pkgsOld.haskellPackages.override (old: {
           overrides =
             pkgsNew.lib.fold pkgsNew.lib.composeExtensions (old.overrides or (_: _: { })) [

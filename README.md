@@ -114,11 +114,9 @@ Did we satisfy those requirements?
 
 * Backwards-compatibility
 
-  We have excellent backwards-compatibility with one major exception:
-  `nix-serve-ng` does not support MacOS (whereas `nix-serve` does).
-
-  Other than that, in the vast majority of cases, you can simply replace
-  `pkgs.nix-serve` with `pkgs.nix-serve-ng` and make no other changes.
+  We have excellent backwards-compatibility, so in the vast majority of cases,
+  you can simply replace `pkgs.nix-serve` with `pkgs.nix-serve-ng` and make no
+  other changes.
 
   * Our executable shares the same name (`nix-serve`) as the original program
 
