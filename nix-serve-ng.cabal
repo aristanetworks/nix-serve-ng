@@ -1,6 +1,6 @@
 cabal-version:      3.6
 name:               nix-serve-ng
-version:            1.0.0
+version:            1.0.1
 synopsis:
     A drop-in replacement for nix-serve that's faster and more stable
 
@@ -9,6 +9,7 @@ license-file:       LICENSE
 author:             Arista Networks
 maintainer:         opensource@awakesecurity.com
 copyright:          2022 Arista Networks
+extra-source-files: CHANGELOG.md
 
 executable nix-serve
     hs-source-dirs:   src
