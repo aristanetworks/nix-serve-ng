@@ -11,33 +11,39 @@
 
   outputs = { nixpkgs, utils, ... }:
     let
+      compiler = "ghc92";
+
       overlay = pkgsNew: pkgsOld: {
         cabal2nix-unwrapped =
           pkgsNew.haskell.lib.justStaticExecutables
-            pkgsNew.haskell.packages.ghc92.cabal2nix;
+            pkgsNew.haskell.packages."${compiler}".cabal2nix;
 
-        haskellPackages = pkgsOld.haskellPackages.override (old: {
-          overrides =
-            pkgsNew.lib.fold pkgsNew.lib.composeExtensions (old.overrides or (_: _: { })) [
-              (pkgsNew.haskell.lib.packageSourceOverrides {
-                nix-serve-ng = ./.;
-              })
-              (haskellPackagesNew: haskellPackagesOld: {
-                nix-serve-ng =
-                  pkgsNew.haskell.lib.overrideCabal
-                    haskellPackagesOld.nix-serve-ng
-                    (old: {
-                      executableSystemDepends = (old.executableSystemDepends or []) ++ [
-                        pkgsNew.boost.dev
-                      ];
-                    });
-              })
-            ];
-        });
+        haskell = pkgsOld.haskell // {
+          packages = pkgsOld.haskell.packages // {
+            "${compiler}" = pkgsOld.haskell.packages."${compiler}".override (old: {
+              overrides =
+                pkgsNew.lib.fold pkgsNew.lib.composeExtensions (old.overrides or (_: _: { })) [
+                  (pkgsNew.haskell.lib.packageSourceOverrides {
+                    nix-serve-ng = ./.;
+                  })
+                  (haskellPackagesNew: haskellPackagesOld: {
+                    nix-serve-ng =
+                      pkgsNew.haskell.lib.overrideCabal
+                        haskellPackagesOld.nix-serve-ng
+                        (old: {
+                          executableSystemDepends = (old.executableSystemDepends or []) ++ [
+                            pkgsNew.boost.dev
+                          ];
+                        });
+                  })
+                ];
+            });
+          };
+        };
 
         nix-serve-ng =
           pkgsNew.haskell.lib.justStaticExecutables
-            pkgsNew.haskellPackages.nix-serve-ng;
+            pkgsNew.haskell.packages."${compiler}".nix-serve-ng;
       };
 
     in
@@ -68,13 +74,16 @@
             defaultApp = apps.default;
 
             devShells.default =
-              (pkgs.haskell.lib.doBenchmark pkgs.haskellPackages.nix-serve-ng).env;
+              (pkgs.haskell.lib.doBenchmark
+                pkgs.haskell.packages."${compiler}".nix-serve-ng
+              ).env;
 
             devShell = devShells.default;
           }) // rec {
         overlays = {
           # The default overlay only adds the exports for
-          # `pkgs.haskellPackages.nix-serve-ng` and `pkgs.nix-serve-ng`
+          # `pkgs.haskell.packages."${compiler}".nix-serve-ng` and
+          # `pkgs.nix-serve-ng`
           default = [ overlay ];
 
           # This overlay additionally overrides `pkgs.nix-serve` to refer to
