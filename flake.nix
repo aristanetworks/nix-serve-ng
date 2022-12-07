@@ -11,12 +11,14 @@
 
   outputs = { nixpkgs, utils, ... }:
     let
-      compiler = "ghc92";
+      compiler = "ghc810";
 
       overlay = pkgsNew: pkgsOld: {
         cabal2nix-unwrapped =
           pkgsNew.haskell.lib.justStaticExecutables
-            pkgsNew.haskell.packages."${compiler}".cabal2nix;
+            # use cabal2nix from 9.2 here, because cabal2nix from 8.10 can't
+            # read cabal-version: 3.6
+            pkgsNew.haskell.packages.ghc92.cabal2nix;
 
         haskell = pkgsOld.haskell // {
           packages = pkgsOld.haskell.packages // {
