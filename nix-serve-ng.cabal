@@ -1,4 +1,4 @@
-cabal-version:      3.6
+cabal-version:      2.2
 name:               nix-serve-ng
 version:            1.0.1
 synopsis:
@@ -60,7 +60,8 @@ executable nix-serve
 
     if os(darwin)
       extra-libraries: c++
-      hsc2hs-options: --cc clang++
+      -- this needs cabal-version: 3.6
+      -- hsc2hs-options: --cc clang++
     elif os(linux)
       extra-libraries: stdc++
     else
