@@ -14,7 +14,6 @@ static ref<Store> getStore()
     static std::shared_ptr<Store> _store;
 
     if (!_store) {
-        initLibStore();
         loadConfFile();
 
         _store = openStore();
