@@ -1,7 +1,7 @@
 { inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs/master;
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    utils.url = github:numtide/flake-utils;
+    utils.url = "github:numtide/flake-utils";
 
     flake-compat = {
       url = "github:edolstra/flake-compat";
