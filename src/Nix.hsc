@@ -162,8 +162,9 @@ data PathInfo = PathInfo
 
 fromCPathInfo :: CPathInfo -> IO PathInfo
 fromCPathInfo CPathInfo{ deriver, narHash, narSize, references, sigs } = do
+    let String_{ data_ } = deriver
     deriver_ <-
-        if data_ (deriver :: String_) == Foreign.nullPtr
+        if data_ == Foreign.nullPtr
         then return Nothing
         else fmap Just (fromString_ deriver)
 

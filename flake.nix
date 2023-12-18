@@ -11,7 +11,7 @@
 
   outputs = { nixpkgs, utils, ... }:
     let
-      compiler = "ghc92";
+      compiler = "ghc94";
 
       overlay = final: prev: {
         cabal2nix-unwrapped =
