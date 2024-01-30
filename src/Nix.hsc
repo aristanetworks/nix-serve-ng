@@ -231,7 +231,7 @@ fingerprintPath storePath PathInfo{ narHash, narSize, references } = do
 
     base32Suffix <- if
         | ByteString.length suffix == 64
-        , Right digest <- Base16.decodeBase16 suffix ->
+        , Right digest <- Base16.decodeBase16Untyped suffix ->
             return (Base32.encodeBase32' digest)
         | ByteString.length suffix == 52 ->
             return suffix
