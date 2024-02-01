@@ -39,7 +39,7 @@ executable nix-serve
     cxx-options:      -std=c++17
 
     build-depends:    base < 5
-                    , base16
+                    , base16 >= 1.0
                     , base32
                     , bytestring
                     , charset
