@@ -25,6 +25,8 @@
                 final.lib.fold final.lib.composeExtensions (old.overrides or (_: _: { })) [
                   (final.haskell.lib.packageSourceOverrides {
                     nix-serve-ng = ./.;
+
+                    base16 = "1.0";
                   })
                   (haskellPackagesNew: haskellPackagesOld: {
                     nix-serve-ng =
