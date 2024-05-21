@@ -107,7 +107,7 @@ Did we satisfy those requirements?
   * [`eris`](https://github.com/thoughtpolice/eris) - A Perl rewrite of
     `nix-serve`
 
-  * [`harmonia`](https://github.com/helsinki-systems/harmonia) - A Rust rewrite
+  * [`harmonia`](https://github.com/nix-community/harmonia) - A Rust rewrite
     of `nix-serve`
 
   See the Benchmarks section below for more details
