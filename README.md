@@ -4,41 +4,78 @@
 
 ## Quick start
 
-There are two main approaches you can use to upgrade a NixOS system to replace
-the old `nix-serve` with `nix-serve-ng`.
+There are three main approaches you can use to configure a NixOS system to replace
+the old `nix-serve` with `nix-serve-ng`:
 
-If you specify your desired NixOS system within `flake.nix` then you can do
-something like this:
+- **A**: Set `services.nix-serve.package = pkgs.nix-serve-ng;` in your NixOS configuration
+  - `nix-serve-ng` is [packaged in nixpkgs](https://search.nixos.org/packages) already
+  - There is no need to consume this repository directly
+- **B**: Include `nix-serve-ng.nixosModules.default` in your NixOS configuration
+  - `nix-serve-ng` refers to this repository being a flake input
+  - Requires consume this repository / this flake
+  - Overlays `pkgs.nix-serve` with `pkgs.nix-serve-ng`
+- **C**: Like **B** but not requiring a flake
+
+We recommend approach **A**. Only use **B** or **C** if you need a bleeding edge
+upstream version of the project.
+
+### Variant A: 
+
+_The code snippet below shows a `flake.nix`._
 
 ```nix
-{ inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs;
+{ 
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs";
 
-    nix-serve-ng.url = github:aristanetworks/nix-serve-ng;
-  };
-
-  outputs = { nixpkgs, nix-serve-ng, ... }: {
+  outputs = { nixpkgs, ... }: {
     nixosConfigurations.default = nixpkgs.lib.nixosSystem {
       modules = [
-        nix-serve-ng.nixosModules.default
-
-        { services.nix-serve.enable = true;
-
-          …
+        /* ... */
+        { 
+          services.nix-serve.enable = true;
+          services.nix-serve.package = pkgs.nix-serve-ng;
+          /* ... */
         }
+        /* ... */
       ];
-
-      system = "x86_64-linux";
     };
   };
 }
 ```
 
-If you don't use `flake.nix` then you can instead define your NixOS module:
-like this:
+### Variant B: 
+
+_The code snippet below shows a `flake.nix`._
 
 ```nix
-let
+{ 
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs";
+  inputs.nix-serve-ng.url = "aristanetworks/nix-serve-ng";
+
+  outputs = { nixpkgs, nix-serve-ng, ... }: {
+    nixosConfigurations.default = nixpkgs.lib.nixosSystem {
+      modules = [
+        nix-serve-ng.nixosModules.default
+        /* ... */
+        { 
+          services.nix-serve.enable = true;
+          /* ... */
+        }
+        /* ... */
+      ];
+    };
+  };
+}
+```
+
+### Variant C: 
+
+_The code snippet below shows a NixOS module file._
+
+```nix
+{ config, pkgs, lib, ... }:
+
+let 
   nix-serve-ng-src = builtins.fetchTarball {
     # Replace the URL and hash with whatever you actually need
     url    = "https://github.com/aristanetworks/nix-serve-ng/archive/1937593598bb1285b41804f25cd6f9ddd4d5f1cb.tar.gz";
@@ -47,13 +84,16 @@ let
   };
 
   nix-serve-ng = import nix-serve-ng-src;
-
 in
-  { ... }: {
-    imports = [ nix-serve-ng.nixosModules.default ];
-
-    …
-  }
+{ 
+  /* ... */
+  imports = [ nix-serve-ng.nixosModules.default ];
+  
+  config = {
+    services.nix-serve.enable = true;
+  };
+  /* ... */
+}
 ```
 
 ## Motivation
