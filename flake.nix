@@ -35,6 +35,7 @@
                         (old: {
                           executableSystemDepends = (old.executableSystemDepends or []) ++ [
                             final.boost.dev
+                            final.nixVersions.nix_2_24
                           ];
                         });
                   })

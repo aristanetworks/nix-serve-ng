@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <nix/store-api.hh>
+#include <nix/shared.hh>
 #include <nix/log-store.hh>
 #include "nix.hh"
 
@@ -14,8 +15,7 @@ static ref<Store> getStore()
     static std::shared_ptr<Store> _store;
 
     if (!_store) {
-        initLibStore();
-        loadConfFile();
+        initLibStore(true);
 
         _store = openStore();
     }
@@ -120,7 +120,7 @@ void queryPathInfo
         output->deriver = emptyString;
     };
 
-    copyString(validPathInfo->narHash.to_string(Base32, true), &output->narHash);
+    copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
 
     output->narSize = validPathInfo->narSize;
 
