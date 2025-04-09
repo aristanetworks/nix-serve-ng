@@ -1,6 +1,7 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # Temporary, until Nixpkgs master has Nix 2.28
+    nixpkgs.url = "github:NixOS/nixpkgs/master";
 
     utils.url = "github:numtide/flake-utils";
 
