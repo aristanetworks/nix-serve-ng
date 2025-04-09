@@ -1,8 +1,10 @@
 #include <cstddef>
 #include <cstdlib>
-#include <nix/store-api.hh>
-#include <nix/shared.hh>
-#include <nix/log-store.hh>
+
+#include <nix/store/store-api.hh>
+#include <nix/store/log-store.hh>
+#include <nix/main/shared.hh>
+
 #include "nix.hh"
 
 using namespace nix;

@@ -34,7 +34,7 @@
                   nix-serve-ng = final.haskell.lib.overrideCabal haskellPackagesOld.nix-serve-ng (old: {
                     executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
                       final.boost.dev
-                      final.nixVersions.nix_2_24
+                      final.nixVersions.nix_2_28
                     ];
                   });
                 })
