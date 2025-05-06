@@ -1,9 +1,15 @@
 #include <cstddef>
 #include <cstdlib>
 
-#include <nix/store/store-api.hh>
-#include <nix/store/log-store.hh>
-#include <nix/main/shared.hh>
+#ifndef LIX
+    #include <nix/store/store-api.hh>
+    #include <nix/store/log-store.hh>
+    #include <nix/main/shared.hh>
+#else
+    #include <lix/libstore/store-api.hh>
+    #include <lix/libstore/log-store.hh>
+    #include <lix/libmain/shared.hh>
+#endif
 
 #include "nix.hh"
 
@@ -17,7 +23,11 @@ static ref<Store> getStore()
     static std::shared_ptr<Store> _store;
 
     if (!_store) {
+#ifndef LIX
         initLibStore(true);
+#else
+        initNix();
+#endif
 
         _store = openStore();
     }
@@ -122,7 +132,11 @@ void queryPathInfo
         output->deriver = emptyString;
     };
 
+#ifndef LIX
     copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
+#else
+    copyString(validPathInfo->narHash.to_string(nix::Base::Base32, true), &output->narHash);
+#endif
 
     output->narSize = validPathInfo->narSize;
 
@@ -185,7 +199,11 @@ bool dumpPath
         });
 
         try {
+#ifndef LIX
             store->narFromPath(storePath.value(), sink);
+#else
+            sink << store->narFromPath(storePath.value());
+#endif
         } catch (const std::runtime_error & e) {
             // Intentionally do nothing.  We're only using the exception as a
             // short-circuiting mechanism.

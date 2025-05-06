@@ -11,6 +11,11 @@ maintainer:         opensource@awakesecurity.com
 copyright:          2022 Arista Networks
 extra-source-files: CHANGELOG.md
 
+Flag Lix
+  Description: Build against Lix
+  Default:     False
+  Manual:      True
+
 executable nix-serve
     hs-source-dirs:   src
 
@@ -55,8 +60,14 @@ executable nix-serve
                     , warp
                     , warp-tls
 
-    pkgconfig-depends:
-                      nix-store
+    if flag(lix)
+      cxx-options:      -DLIX
+      pkgconfig-depends:
+                      , lix-main
+                      , lix-store
+    else
+      pkgconfig-depends:
+                        nix-store
 
     if os(darwin)
       extra-libraries: c++

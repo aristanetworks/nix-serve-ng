@@ -96,6 +96,12 @@ in
 }
 ```
 
+## Lix compatability
+
+The default `nix-serve-ng` should work on top of lix, but if you want to build
+it against lix for development or to remove the default nix dependency, you can
+pass `-f lix` to cabal or use the `lix-serve-ng` package from the flake.
+
 ## Motivation
 
 Our requirements for this project were:
