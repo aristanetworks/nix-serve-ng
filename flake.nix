@@ -44,6 +44,7 @@
                   });
                   lix-serve-ng = final.haskell.lib.overrideCabal haskellPackagesOld.lix-serve-ng (old: {
                     pname = "lix-serve-ng";
+                    configureFlags = (old.configureFlags or [ ]) ++ [ "-flix" ];
                     executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
                       final.boost.dev
                       final.lix
