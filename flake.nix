@@ -3,6 +3,8 @@
     # Temporary, until Nixpkgs master has Nix 2.28
     nixpkgs.url = "github:NixOS/nixpkgs/master";
 
+    lix.url = "git+https://git.lix.systems/lix-project/lix?rev=2837da71ec1588c1187d2e554719b15904a46c8b";
+
     utils.url = "github:numtide/flake-utils";
 
     flake-compat = {
@@ -12,11 +14,13 @@
   };
 
   outputs =
-    { nixpkgs, utils, ... }:
+    { nixpkgs, lix, utils, ... }:
     let
       compiler = "ghc94";
 
       overlay = final: prev: {
+        lix = lix.packages.${final.system}.default;
+
         cabal2nix-unwrapped =
           final.haskell.lib.justStaticExecutables
             final.haskell.packages."${compiler}".cabal2nix;
@@ -27,6 +31,7 @@
               overrides = final.lib.fold final.lib.composeExtensions (old.overrides or (_: _: { })) [
                 (final.haskell.lib.packageSourceOverrides {
                   nix-serve-ng = ./.;
+                  lix-serve-ng = ./.;
 
                   base16 = "1.0";
                 })
@@ -35,6 +40,14 @@
                     executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
                       final.boost.dev
                       final.nixVersions.nix_2_28
+                    ];
+                  });
+                  lix-serve-ng = final.haskell.lib.overrideCabal haskellPackagesOld.lix-serve-ng (old: {
+                    pname = "lix-serve-ng";
+                    configureFlags = (old.configureFlags or [ ]) ++ [ "-flix" ];
+                    executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
+                      final.boost.dev
+                      final.lix
                     ];
                   });
                 })
@@ -46,6 +59,10 @@
         nix-serve-ng =
           final.haskell.lib.justStaticExecutables
             final.haskell.packages."${compiler}".nix-serve-ng;
+
+        lix-serve-ng =
+          final.haskell.lib.justStaticExecutables
+            final.haskell.packages."${compiler}".lix-serve-ng;
       };
 
     in
@@ -60,24 +77,36 @@
           inherit system;
         };
 
-        inherit (pkgs) nix-serve-ng;
+        inherit (pkgs) nix-serve-ng lix-serve-ng;
 
       in
       rec {
-        packages.default = nix-serve-ng;
+        packages = {
+          inherit nix-serve-ng lix-serve-ng;
+          default = nix-serve-ng;
+        };
 
         defaultPackage = packages.default;
 
-        apps.default = {
-          type = "app";
-
-          program = "${nix-serve-ng}/bin/nix-serve";
+        apps = rec {
+          default = nix-serve-ng;
+          nix-serve-ng = {
+            type = "app";
+            program = "${nix-serve-ng}/bin/nix-serve";
+          };
+          lix-serve-ng = {
+            type = "app";
+            program = "${lix-serve-ng}/bin/nix-serve";
+          };
         };
 
         defaultApp = apps.default;
 
-        devShells.default =
-          (pkgs.haskell.lib.doBenchmark pkgs.haskell.packages."${compiler}".nix-serve-ng).env;
+        devShells = rec {
+          default = nix-serve-ng;
+          nix-serve-ng = (pkgs.haskell.lib.doBenchmark pkgs.haskell.packages."${compiler}".nix-serve-ng).env;
+          lix-serve-ng = (pkgs.haskell.lib.doBenchmark pkgs.haskell.packages."${compiler}".lix-serve-ng).env;
+        };
 
         devShell = devShells.default;
       }
