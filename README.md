@@ -50,7 +50,7 @@ _The code snippet below shows a `flake.nix`._
 ```nix
 { 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs";
-  inputs.nix-serve-ng.url = "aristanetworks/nix-serve-ng";
+  inputs.nix-serve-ng.url = "github:aristanetworks/nix-serve-ng";
 
   outputs = { nixpkgs, nix-serve-ng, ... }: {
     nixosConfigurations.default = nixpkgs.lib.nixosSystem {
