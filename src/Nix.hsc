@@ -34,6 +34,8 @@ import qualified Foreign
 
 #include "nix.hh"
 
+foreign import ccall "initStore" initStore :: IO ()
+
 foreign import ccall "freeString" freeString :: Ptr String_ -> IO ()
 
 data String_ = String_ { data_ :: Ptr CChar, size  :: CSize }

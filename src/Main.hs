@@ -341,6 +341,8 @@ main = do
     options@Options{ priority, timeout, verbosity } <- do
         Options.execParser Options.parserInfo
 
+    Nix.initStore
+
     storeDirectory <- Nix.getStoreDir
 
     secretKeyFile <- Environment.lookupEnv "NIX_SECRET_KEY_FILE"
