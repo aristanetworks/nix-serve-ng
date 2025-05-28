@@ -37,6 +37,12 @@ static ref<Store> getStore()
 
 extern "C" {
 
+// Must be called once before the server is stated to avoid races
+void initStore()
+{
+    getStore();
+}
+
 void freeString(struct string * const input)
 {
     free((void *) input->data);
