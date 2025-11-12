@@ -1,7 +1,6 @@
 {
   inputs = {
-    # Temporary, until Nixpkgs master has Nix 2.28
-    nixpkgs.url = "github:NixOS/nixpkgs/master";
+    nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-25.05";
 
     lix.url = "git+https://git.lix.systems/lix-project/lix?rev=2837da71ec1588c1187d2e554719b15904a46c8b";
 
@@ -16,7 +15,7 @@
   outputs =
     { nixpkgs, lix, utils, ... }:
     let
-      compiler = "ghc94";
+      compiler = "ghc984";
 
       overlay = final: prev: {
         lix = lix.packages.${final.system}.default;
@@ -32,8 +31,6 @@
                 (final.haskell.lib.packageSourceOverrides {
                   nix-serve-ng = ./.;
                   lix-serve-ng = ./.;
-
-                  base16 = "1.0";
                 })
                 (haskellPackagesNew: haskellPackagesOld: {
                   nix-serve-ng = final.haskell.lib.overrideCabal haskellPackagesOld.nix-serve-ng (old: {
