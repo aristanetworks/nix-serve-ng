@@ -226,5 +226,12 @@ parserInfo =
 
 parseHost :: Parsec Void String HostPreference
 parseHost = do
-    string <- Megaparsec.takeWhileP Nothing (/= ':')
-    return (fromString string)
+    let ipv6 = Megaparsec.try do
+          proto <- Megaparsec.takeWhileP Nothing (/= '[') <* "["
+          addr <- Megaparsec.takeWhileP Nothing (/= ']') <* "]"
+          _ <- Megaparsec.lookAhead ":"
+          pure . fromString $ proto <> "[" <> addr <> "]"
+
+    let other = Megaparsec.takeWhileP Nothing (/= ':')
+
+    fmap fromString $ ipv6 <|> other
