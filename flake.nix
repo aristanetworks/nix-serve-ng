@@ -2,8 +2,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-25.05";
 
-    lix.url = "git+https://git.lix.systems/lix-project/lix?rev=2837da71ec1588c1187d2e554719b15904a46c8b";
-
     utils.url = "github:numtide/flake-utils";
 
     flake-compat = {
@@ -13,12 +11,13 @@
   };
 
   outputs =
-    { nixpkgs, lix, utils, ... }:
+    { nixpkgs, utils, ... }:
     let
       compiler = "ghc984";
+      lix = "lix_2_92";
 
       overlay = final: prev: {
-        lix = lix.packages.${final.system}.default;
+        lix = final.lixPackageSets.${lix}.lix;
 
         cabal2nix-unwrapped =
           final.haskell.lib.justStaticExecutables
@@ -79,7 +78,7 @@
       in
       rec {
         packages = {
-          inherit nix-serve-ng lix-serve-ng;
+          inherit pkgs nix-serve-ng lix-serve-ng;
           default = nix-serve-ng;
         };
 
