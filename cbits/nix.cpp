@@ -9,30 +9,50 @@
     #include <lix/libstore/store-api.hh>
     #include <lix/libstore/log-store.hh>
     #include <lix/libmain/shared.hh>
+    #include <lix/libutil/async.hh>
+#endif
+
+#ifndef LIX
+#define BLOCKON(X) X
+#else
+#define BLOCKON(X) aio().blockOn(X)
 #endif
 
 #include "nix.hh"
 
 using namespace nix;
 
+#ifdef LIX
+static AsyncIoRoot & aio()
+{
+    static thread_local AsyncIoRoot root;
+    return root;
+}
+#endif
+
 // Copied from:
 //
 // https://github.com/NixOS/nix/blob/2.8.1/perl/lib/Nix/Store.xs#L24-L37
 static ref<Store> getStore()
 {
+
+#ifndef LIX
     static std::shared_ptr<Store> _store;
 
     if (!_store) {
-#ifndef LIX
         initLibStore(true);
-#else
-        initNix();
-#endif
-
         _store = openStore();
     }
-
     return ref<Store>(_store);
+#else
+    static std::optional<ref<Store>> _store;
+
+    if (!_store) {
+        initLibStore();
+        _store = aio().blockOn(openStore());
+    }
+    return *_store;
+#endif
 }
 
 extern "C" {
@@ -111,7 +131,7 @@ void queryPathFromHashPart
 {
     ref<Store> store = getStore();
 
-    std::optional<StorePath> path = store->queryPathFromHashPart(hashPart);
+    std::optional<StorePath> path = BLOCKON(store->queryPathFromHashPart(hashPart));
 
     if (path.has_value()) {
         copyString(store->printStorePath(path.value()), output);
@@ -128,7 +148,7 @@ void queryPathInfo
     ref<Store> store = getStore();
 
     ref<ValidPathInfo const> const validPathInfo =
-        store->queryPathInfo(store->parseStorePath(storePath));
+        BLOCKON(store->queryPathInfo(store->parseStorePath(storePath)));
 
     std::optional<StorePath const> const deriver = validPathInfo->deriver;
 
@@ -190,7 +210,7 @@ bool dumpPath
     ref<Store> store = getStore();
 
     std::optional<StorePath> storePath =
-        store->queryPathFromHashPart(hashPart);
+        BLOCKON(store->queryPathFromHashPart(hashPart));
 
     if (storePath.has_value()) {
         LambdaSink sink([=](std::string_view v) {
@@ -208,7 +228,7 @@ bool dumpPath
 #ifndef LIX
             store->narFromPath(storePath.value(), sink);
 #else
-            sink << store->narFromPath(storePath.value());
+            aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
 #endif
         } catch (const std::runtime_error & e) {
             // Intentionally do nothing.  We're only using the exception as a
@@ -226,7 +246,7 @@ void dumpLog(char const * const baseName, struct string * const output) {
 
     StorePath storePath(baseName);
 
-    auto subs = getDefaultSubstituters();
+    auto subs = BLOCKON(getDefaultSubstituters());
 
     subs.push_front(store);
 
@@ -235,7 +255,7 @@ void dumpLog(char const * const baseName, struct string * const output) {
     for (auto & sub : subs) {
         LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
 
-        std::optional<std::string> log = logStore->getBuildLog(storePath);
+        std::optional<std::string> log = BLOCKON(logStore->getBuildLog(storePath));
 
         if (log.has_value()) {
             copyString(log.value(), output);
