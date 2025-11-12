@@ -14,11 +14,8 @@
     { nixpkgs, utils, ... }:
     let
       compiler = "ghc984";
-      lix = "lix_2_93";
 
       overlay = final: prev: {
-        lix = final.lixPackageSets.${lix}.lix;
-
         cabal2nix-unwrapped =
           final.haskell.lib.justStaticExecutables
             final.haskell.packages."${compiler}".cabal2nix;
@@ -43,8 +40,9 @@
                     configureFlags = (old.configureFlags or [ ]) ++ [ "-flix" ];
                     executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
                       final.boost.dev
-                      final.capnproto
                       final.lix
+                    ] ++ final.lib.optional (builtins.compareVersions final.lix.version "2.93.0" >= 0) [
+                      final.capnproto
                     ];
                   });
                 })
