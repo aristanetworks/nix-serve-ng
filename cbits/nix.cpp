@@ -48,14 +48,14 @@ static AsyncIoRoot & aio()
 // Copied from:
 //
 // https://github.com/NixOS/nix/blob/2.8.1/perl/lib/Nix/Store.xs#L24-L37
-static ref<Store> getStore()
+static ref<Store> getStore(std::string const uri = "")
 {
 #if CPPNIX
     static std::shared_ptr<Store> _store;
 
     if (!_store) {
         initLibStore(true);
-        _store = openStore();
+        _store = uri == "" ? openStore() : openStore(uri);
     }
     return ref<Store>(_store);
 #elif LIX_PRE_2_93
@@ -63,7 +63,7 @@ static ref<Store> getStore()
 
     if (!_store) {
         initNix();
-        _store = openStore();
+        _store = uri == "" ? openStore() : openStore(uri);
     }
     return ref<Store>(_store);
 #else
@@ -71,7 +71,7 @@ static ref<Store> getStore()
 
     if (!_store) {
         initNix();
-        _store = aio().blockOn(openStore());
+        _store = aio().blockOn(uri == "" ? openStore() : openStore(uri));
     }
     return *_store;
 #endif
@@ -83,6 +83,11 @@ extern "C" {
 void initStore()
 {
     getStore();
+}
+
+void initStoreUri(char const * const uri)
+{
+    getStore(uri);
 }
 
 void freeString(struct string * const input)

@@ -36,6 +36,12 @@ import qualified Foreign
 
 foreign import ccall "initStore" initStore :: IO ()
 
+foreign import ccall "initStoreUri" initStoreUri_ :: CString -> IO ()
+
+initStoreUri :: ByteString -> IO ()
+initStoreUri uri = do
+    ByteString.useAsCString uri initStoreUri_
+
 foreign import ccall "freeString" freeString :: Ptr String_ -> IO ()
 
 data String_ = String_ { data_ :: Ptr CChar, size  :: CSize }
