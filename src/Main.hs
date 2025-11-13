@@ -338,10 +338,10 @@ readSecretKey = fmap ByteString.Char8.strip . ByteString.readFile
 
 main :: IO ()
 main = do
-    options@Options{ priority, timeout, verbosity } <- do
+    options@Options{ priority, store, timeout, verbosity } <- do
         Options.execParser Options.parserInfo
 
-    Nix.initStore
+    maybe Nix.initStore Nix.initStoreUri store
 
     storeDirectory <- Nix.getStoreDir
 
