@@ -6,6 +6,7 @@
 module Options where
 
 import Control.Applicative (optional, (<|>))
+import Data.ByteString (ByteString)
 import Data.String (IsString(..))
 import Data.Void (Void)
 import Network.Wai.Handler.Warp (HostPreference, Port)
@@ -29,6 +30,7 @@ data Options = Options
     { priority  :: Integer
     , socket    :: Socket
     , ssl       :: SSL
+    , store     :: Maybe ByteString
     , timeout   :: Natural
     , verbosity :: Verbosity
     }
@@ -69,6 +71,13 @@ parseSslEnabled = do
 
 parseSsl :: Parser SSL
 parseSsl = parseSslEnabled <|> pure Disabled
+
+parseStore :: Parser (Maybe ByteString)
+parseStore = optional $ Options.strOption
+  (   Options.long "store"
+  <>  Options.help "nix store uri. see: man nix3-help-stores"
+  <>  Options.metavar "STORE"
+  )
 
 parseTcp :: Parser Socket
 parseTcp = do
@@ -162,6 +171,8 @@ parseOptions = do
 
     timeout <- parseTimeout
 
+    store <- parseStore
+
     verbosity <- parseVerbosity
 
     return Options{..}
@@ -213,6 +224,8 @@ parseListen = do
     priority <- parsePriority
 
     timeout <- parseTimeout
+
+    store <- parseStore
 
     verbosity <- parseVerbosity
 
