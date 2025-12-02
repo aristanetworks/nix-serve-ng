@@ -24,7 +24,11 @@ data Socket
 
 data SSL = Disabled | Enabled { cert :: FilePath, key :: FilePath }
 
-data Verbosity = Quiet | Normal | Verbose
+data Verbosity = Quiet
+               | Normal
+               | NormalWithForwarding
+               | Verbose
+               | VerboseNoColor
 
 data Options = Options
     { priority  :: Integer
@@ -155,9 +159,21 @@ parseVerbosity =
             (   Options.long "quiet"
             <>  Options.help "Disable logging"
             )
+    <|> Options.flag' Normal
+            (   Options.long "normal"
+            <>  Options.help "Apache log format with source IP of peer (default)"
+            )
+    <|> Options.flag' NormalWithForwarding
+            (   Options.long "log-real-ip"
+            <>  Options.help "Apache log format with source IP from headers"
+            )
     <|> Options.flag' Verbose
             (   Options.long "verbose"
-            <>  Options.help "Log verbosely"
+            <>  Options.help "Verbose log format (colored)"
+            )
+    <|> Options.flag' VerboseNoColor
+            (   Options.long "verbose"
+            <>  Options.help "Verbose log format (no color)"
             )
     <|> pure Normal
 

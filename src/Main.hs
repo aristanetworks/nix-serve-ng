@@ -349,11 +349,14 @@ main = do
 
     secretKey <- traverse readSecretKey secretKeyFile
 
-    let logger =
-            case verbosity of
-                Quiet   -> id
-                Normal  -> RequestLogger.logStdout
-                Verbose -> RequestLogger.logStdoutDev
+    logger <- case verbosity of
+      Quiet                -> pure id
+      Normal               -> pure RequestLogger.logStdout
+      NormalWithForwarding -> RequestLogger.mkRequestLogger RequestLogger.defaultRequestLoggerSettings
+        { RequestLogger.outputFormat = RequestLogger.Apache RequestLogger.FromFallback }
+      Verbose              -> pure RequestLogger.logStdoutDev
+      VerboseNoColor       -> RequestLogger.mkRequestLogger RequestLogger.defaultRequestLoggerSettings
+        { RequestLogger.outputFormat = RequestLogger.Detailed False }
 
     let application = logger (makeApplication ApplicationOptions{..})
 
