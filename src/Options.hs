@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE BlockArguments    #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -14,9 +15,10 @@ import Numeric.Natural (Natural)
 import Options.Applicative (Parser, ParserInfo, ReadM)
 import Text.Megaparsec (Parsec)
 
-import qualified Options.Applicative        as Options
-import qualified Text.Megaparsec            as Megaparsec
-import qualified Text.Megaparsec.Char.Lexer as Lexer
+import qualified Options.Applicative             as Options
+import qualified Options.Applicative.Help.Pretty as Options
+import qualified Text.Megaparsec                 as Megaparsec
+import qualified Text.Megaparsec.Char.Lexer      as Lexer
 
 data Socket
     = TCP { host :: HostPreference, port :: Port }
@@ -24,9 +26,9 @@ data Socket
 
 data SSL = Disabled | Enabled { cert :: FilePath, key :: FilePath }
 
-data Verbosity = Quiet
-               | Normal
-               | NormalWithForwarding
+data LogFormat = Quiet
+               | Apache
+               | ApacheWithForwarding
                | Verbose
                | VerboseNoColor
 
@@ -36,7 +38,7 @@ data Options = Options
     , ssl       :: SSL
     , store     :: Maybe ByteString
     , timeout   :: Natural
-    , verbosity :: Verbosity
+    , logFormat :: LogFormat
     }
 
 parseCert :: Parser FilePath
@@ -153,29 +155,40 @@ parseTimeout =
         <>  Options.value (10 * 60)
         )
 
-parseVerbosity :: Parser Verbosity
-parseVerbosity =
+parseLogFormat :: Parser LogFormat
+parseLogFormat =
         Options.flag' Quiet
             (   Options.long "quiet"
-            <>  Options.help "Disable logging"
-            )
-    <|> Options.flag' Normal
-            (   Options.long "normal"
-            <>  Options.help "Apache log format with source IP of peer (default)"
-            )
-    <|> Options.flag' NormalWithForwarding
-            (   Options.long "log-real-ip"
-            <>  Options.help "Apache log format with source IP from headers"
+            <>  Options.help "Disable logging. Alias for --log-format quiet"
             )
     <|> Options.flag' Verbose
             (   Options.long "verbose"
-            <>  Options.help "Verbose log format (colored)"
+            <>  Options.help "Verbose logging. Alias for --log-format verbose"
             )
-    <|> Options.flag' VerboseNoColor
-            (   Options.long "verbose"
-            <>  Options.help "Verbose log format (no color)"
+    <|> Options.option readLogFormat
+            (   Options.long "log-format"
+            <>  Options.metavar "FORMAT"
+            <>  Options.helpDoc (Just helpDoc)
+            <>  Options.value Apache
             )
-    <|> pure Normal
+  where
+    helpDoc = Options.nest 2 $ Options.vsep
+      [ "Use of of these output formats:"
+      , "quiet - do not log"
+      , "normal - Apache logging format (default)"
+      , "real-ip - like normal, but resolve forwarding"
+      , "verbose - colored verbose logging"
+      , "debug - uncolored verbose logging"
+      ]
+
+readLogFormat :: Options.ReadM LogFormat
+readLogFormat = Options.maybeReader \case
+  "quiet" -> Just Quiet
+  "default" -> Just Apache
+  "real-ip" -> Just ApacheWithForwarding
+  "verbose" -> Just Verbose
+  "debug" -> Just VerboseNoColor
+  _ -> Nothing
 
 parseOptions :: Parser Options
 parseOptions = do
@@ -189,7 +202,7 @@ parseOptions = do
 
     store <- parseStore
 
-    verbosity <- parseVerbosity
+    logFormat <- parseLogFormat
 
     return Options{..}
 
@@ -243,7 +256,7 @@ parseListen = do
 
     store <- parseStore
 
-    verbosity <- parseVerbosity
+    logFormat <- parseLogFormat
 
     return Options{..}
 
