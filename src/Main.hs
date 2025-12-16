@@ -14,7 +14,7 @@ import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
 import Nix (NoSuchPath(..), PathInfo(..))
 import Numeric.Natural (Natural)
-import Options (Options(..), Socket(..), SSL(..), Verbosity(..))
+import Options (Options(..), Socket(..), SSL(..), LogFormat(..))
 
 import qualified Control.Exception                    as Exception
 import qualified Control.Monad                        as Monad
@@ -338,7 +338,7 @@ readSecretKey = fmap ByteString.Char8.strip . ByteString.readFile
 
 main :: IO ()
 main = do
-    options@Options{ priority, store, timeout, verbosity } <- do
+    options@Options{ priority, store, timeout, logFormat } <- do
         Options.execParser Options.parserInfo
 
     maybe Nix.initStore Nix.initStoreUri store
@@ -349,11 +349,14 @@ main = do
 
     secretKey <- traverse readSecretKey secretKeyFile
 
-    let logger =
-            case verbosity of
-                Quiet   -> id
-                Normal  -> RequestLogger.logStdout
-                Verbose -> RequestLogger.logStdoutDev
+    logger <- case logFormat of
+      Quiet                -> pure id
+      Apache               -> pure RequestLogger.logStdout
+      ApacheWithForwarding -> RequestLogger.mkRequestLogger RequestLogger.defaultRequestLoggerSettings
+        { RequestLogger.outputFormat = RequestLogger.Apache RequestLogger.FromFallback }
+      Verbose              -> pure RequestLogger.logStdoutDev
+      VerboseNoColor       -> RequestLogger.mkRequestLogger RequestLogger.defaultRequestLoggerSettings
+        { RequestLogger.outputFormat = RequestLogger.Detailed False }
 
     let application = logger (makeApplication ApplicationOptions{..})
 
