@@ -174,11 +174,11 @@ parseLogFormat =
   where
     helpDoc = Options.nest 2 $ Options.vsep
       [ "Use of of these output formats:"
-      , "quiet - do not log"
-      , "normal - Apache logging format (default)"
-      , "real-ip - like normal, but resolve forwarding"
-      , "verbose - colored verbose logging"
-      , "debug - uncolored verbose logging"
+      , "quiet   - do not log"
+      , "normal  - Apache logging format (default)"
+      , "real-ip - like normal, but resolves ip forwarding"
+      , "verbose - verbose logging with colored output"
+      , "debug   - verbose logging with uncolored output"
       ]
 
 readLogFormat :: Options.ReadM LogFormat
