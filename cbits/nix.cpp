@@ -261,8 +261,10 @@ bool dumpPath
             store->narFromPath(storePath.value(), sink);
 #elif LIX_PRE_2_93
             sink << store->narFromPath(storePath.value());
-#else
+#elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
             aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
+#else
+            aio().blockOn(aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink));
 #endif
         } catch (const std::runtime_error & e) {
             // Intentionally do nothing.  We're only using the exception as a
