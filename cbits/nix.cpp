@@ -19,6 +19,7 @@
     #include <nix/store/log-store.hh>
     #include <nix/main/shared.hh>
 #else
+    #include <lix/config.h>
     #include <lix/libstore/store-api.hh>
     #include <lix/libstore/log-store.hh>
     #include <lix/libmain/shared.hh>
@@ -224,7 +225,11 @@ void signString
     , struct string * const output
     )
 {
+#if ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
     std::string signature = SecretKey(secretKey).signDetached(message);
+#else
+    std::string signature = SecretKey::parse(secretKey).signDetached(message);
+#endif
 
     copyString(signature, output);
 }
@@ -256,8 +261,10 @@ bool dumpPath
             store->narFromPath(storePath.value(), sink);
 #elif LIX_PRE_2_93
             sink << store->narFromPath(storePath.value());
-#else
+#elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
             aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
+#else
+            aio().blockOn(aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink));
 #endif
         } catch (const std::runtime_error & e) {
             // Intentionally do nothing.  We're only using the exception as a
