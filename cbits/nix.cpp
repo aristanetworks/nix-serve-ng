@@ -1,5 +1,9 @@
 #include <cstddef>
 #include <cstdlib>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <stdexcept>
 
 #ifndef LIX
     #define CPPNIX 1
@@ -15,14 +19,16 @@
 #endif
 
 #if CPPNIX
+    #include <nix/main/shared.hh>
+    #include <nix/store/filetransfer.hh>
     #include <nix/store/store-api.hh>
     #include <nix/store/log-store.hh>
-    #include <nix/main/shared.hh>
 #else
     #include <lix/config.h>
-    #include <lix/libstore/store-api.hh>
-    #include <lix/libstore/log-store.hh>
     #include <lix/libmain/shared.hh>
+    #include <lix/libstore/filetransfer.hh>
+    #include <lix/libstore/log-store.hh>
+    #include <lix/libstore/store-api.hh>
     #if LIX_POST_2_93
         #include <lix/libutil/async.hh>
     #endif
@@ -46,49 +52,84 @@ static AsyncIoRoot & aio()
 }
 #endif
 
-// Copied from:
-//
-// https://github.com/NixOS/nix/blob/2.8.1/perl/lib/Nix/Store.xs#L24-L37
-static ref<Store> getStore(std::string const uri = "")
-{
-#if CPPNIX
-    static std::shared_ptr<Store> _store;
+#if CPPNIX || LIX_PRE_2_93
 
-    if (!_store) {
-        initLibStore(true);
-        _store = uri == "" ? openStore() : openStore(uri);
-    }
-    return ref<Store>(_store);
-#elif LIX_PRE_2_93
-    static std::shared_ptr<Store> _store;
+typedef std::shared_ptr<Store> StorePtr
+#define OPEN_STORE(X) X == "" ? openStore() : openStore(X)
+#define STORE_REF(X) ref<Store>(X)
 
-    if (!_store) {
-        initNix();
-        _store = uri == "" ? openStore() : openStore(uri);
-    }
-    return ref<Store>(_store);
+std::mutex _stores_mutex;
+static std::map<std::string, StorePtr> _stores;
+
+static void insertStore(std::string url, StorePtr store) {
+    std::lock_guard<std::mutex> guard(_stores_mutex);
+    _stores.insert({url,store});
+}
+
+static StorePtr lookupStore(std::string url) {
+    std::lock_guard<std::mutex> guard(_stores_mutex);
+    return *_stores[url];
+}
+
 #else
-    static std::optional<ref<Store>> _store;
 
-    if (!_store) {
-        initNix();
-        _store = aio().blockOn(uri == "" ? openStore() : openStore(uri));
-    }
-    return *_store;
+typedef std::optional<ref<Store>> StorePtr;
+#define OPEN_STORE(X) aio().blockOn(X == "" ? openStore() : openStore(X))
+#define STORE_REF(X) *X
+
+static Sync<std::map<std::string, StorePtr>> _stores;
+
+static void insertStore(std::string url, StorePtr store) {
+    auto _stores_(_stores.lock());
+    (*_stores_).insert({url,store});
+}
+
+static StorePtr lookupStore(std::string url) {
+    auto _stores_(_stores.lock());
+    return (*_stores_)[url];
+}
+
 #endif
+
+// Based on: https://github.com/NixOS/nix/blob/2.8.1/perl/lib/Nix/Store.xs#L24-L37
+// with allowance for multiple stores
+static ref<Store> getStore(std::string const url, bool cached = true)
+{
+    StorePtr store;
+
+    if (!cached) {
+        store = OPEN_STORE(url);
+        insertStore(url, store);
+    } else {
+        // We know this exists from the Haskell side
+        store = lookupStore(url);
+    }
+
+    return STORE_REF(store);
 }
 
 extern "C" {
 
 // Must be called once before the server is stated to avoid races
-void initStore()
+int initStore(char const * const url)
 {
-    getStore();
-}
+    static bool _initDone = false;
+    if (!_initDone) {
+        #if CPPNIX
+        initLibStore(true);
+        #else
+        initNix();
+        #endif
+        _initDone = true;
+    }
 
-void initStoreUri(char const * const uri)
-{
-    getStore(uri);
+    try {
+        getStore(url, false);
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'initStore': " << e.what() << std::endl;
+        return RETURN_FAIL;
+    }
+    return RETURN_OK;
 }
 
 void freeString(struct string * const input)
@@ -154,62 +195,89 @@ void getStoreDir(struct string * const output)
     copyString(settings.nixStore, output);
 }
 
-void queryPathFromHashPart
-    ( char const * const hashPart
+unsigned long getMaxConnectTimeout()
+{
+    #if CPPNIX
+    return fileTransferSettings.connectTimeout;
+    #elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
+    return fileTransferSettings.connectTimeout.get();
+    #else
+    return fileTransferSettings.maxConnectTimeout.get();
+    #endif
+}
+
+int queryPathFromHashPart
+    ( char const * const url
+    , char const * const hashPart
     , struct string * const output
     )
 {
-    ref<Store> store = getStore();
+    try {
+        ref<Store> store = getStore(url);
 
-    std::optional<StorePath> path = BLOCKON(store->queryPathFromHashPart(hashPart));
+        std::optional<StorePath> path = BLOCKON(store->queryPathFromHashPart(hashPart));
 
-    if (path.has_value()) {
-        copyString(store->printStorePath(path.value()), output);
-    } else {
-        *output = emptyString;
+        if (path.has_value()) {
+            copyString(store->printStorePath(path.value()), output);
+        } else {
+            *output = emptyString;
+        }
+
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'queryPathFromHashPart': " << e.what() << std::endl;
+        return RETURN_EXCEPTION;
     }
+    return RETURN_OK;
 }
 
-void queryPathInfo
-    ( char const * const storePath
+int queryPathInfo
+    ( char const * const url
+    , char const * const storePath
     , PathInfo * const output
     )
 {
-    ref<Store> store = getStore();
+    try {
+        ref<Store> store = getStore(url);
 
-    ref<ValidPathInfo const> const validPathInfo =
-        BLOCKON(store->queryPathInfo(store->parseStorePath(storePath)));
+        ref<ValidPathInfo const> const validPathInfo =
+            BLOCKON(store->queryPathInfo(store->parseStorePath(storePath)));
 
-    std::optional<StorePath const> const deriver = validPathInfo->deriver;
+        std::optional<StorePath const> const deriver = validPathInfo->deriver;
 
-    if (deriver.has_value()) {
-        copyString(store->printStorePath(deriver.value()), &output->deriver);
-    } else {
-        output->deriver = emptyString;
-    };
+        if (deriver.has_value()) {
+            copyString(store->printStorePath(deriver.value()), &output->deriver);
+        } else {
+            output->deriver = emptyString;
+        };
 
-#if CPPNIX
-    copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
-#else
-    copyString(validPathInfo->narHash.to_string(nix::Base::Base32, true), &output->narHash);
-#endif
+        #if CPPNIX
+        copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
+        #else
+        copyString(validPathInfo->narHash.to_string(nix::Base::Base32, true), &output->narHash);
+        #endif
 
-    output->narSize = validPathInfo->narSize;
+        output->narSize = validPathInfo->narSize;
 
-    std::vector<std::string> references(validPathInfo->references.size());
+        std::vector<std::string> references(validPathInfo->references.size());
 
-    std::transform(
-        validPathInfo->references.begin(),
-        validPathInfo->references.end(),
-        references.begin(),
-        [=](StorePath storePath) { return store->printStorePath(storePath); }
-    );
+        std::transform(
+            validPathInfo->references.begin(),
+            validPathInfo->references.end(),
+            references.begin(),
+            [=](StorePath storePath) { return store->printStorePath(storePath); }
+        );
 
-    copyStrings(references, &output->references);
+        copyStrings(references, &output->references);
 
-    std::vector<std::string> sigs(validPathInfo->sigs.begin(), validPathInfo->sigs.end());
+        std::vector<std::string> sigs(validPathInfo->sigs.begin(), validPathInfo->sigs.end());
 
-    copyStrings(sigs, &output->sigs);
+        copyStrings(sigs, &output->sigs);
+
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'queryPathInfo': " << e.what() << std::endl;
+        return RETURN_EXCEPTION;
+    }
+    return RETURN_OK;
 }
 
 void freePathInfo(struct PathInfo * const input)
@@ -221,83 +289,110 @@ void freePathInfo(struct PathInfo * const input)
 }
 
 // TODO: This can be done in Haskell using the `ed25519` package
-void signString
+int signString
     ( char const * const secretKey
     , char const * const message
     , struct string * const output
     )
 {
-#if ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
-    std::string signature = SecretKey(secretKey).signDetached(message);
-#else
-    std::string signature = SecretKey::parse(secretKey).signDetached(message);
-#endif
+    try {
+        #if ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
+        std::string signature = SecretKey(secretKey).signDetached(message);
+        #else
+        std::string signature = SecretKey::parse(secretKey).signDetached(message);
+        #endif
 
-    copyString(signature, output);
+        copyString(signature, output);
+
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'signStrings': " << e.what() << std::endl;
+        return RETURN_EXCEPTION;
+    }
+    return RETURN_OK;
 }
 
 bool dumpPath
-    ( char const * const hashPart
+    ( char const * const url
+    , char const * const hashPart
     , bool (* const callback)(char const * const data, size_t const size)
     )
 {
-    ref<Store> store = getStore();
+    try {
+        ref<Store> store = getStore(url);
 
-    std::optional<StorePath> storePath =
-        BLOCKON(store->queryPathFromHashPart(hashPart));
+        std::optional<StorePath> storePath =
+            BLOCKON(store->queryPathFromHashPart(hashPart));
 
-    if (storePath.has_value()) {
-        LambdaSink sink([=](std::string_view v) {
-            bool succeeded = (*callback)(v.data(), v.size());
+        if (storePath.has_value()) {
+            LambdaSink sink([=](std::string_view v) {
+                bool succeeded = (*callback)(v.data(), v.size());
 
-            if (!succeeded) {
-                // We don't really care about the error message.  The only
-                // reason for throwing an exception here is that this is the
-                // only way that a Nix sink can exit early.
-                throw std::runtime_error("");
+                if (!succeeded) {
+                    // We don't really care about the error message.  The only
+                    // reason for throwing an exception here is that this is the
+                    // only way that a Nix sink can exit early.
+                    throw std::runtime_error("");
+                }
+            });
+
+            try {
+                #if CPPNIX
+                store->narFromPath(storePath.value(), sink);
+                #elif LIX_PRE_2_93
+                sink << store->narFromPath(storePath.value());
+                #elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
+                aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
+                #else
+                aio().blockOn(aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink));
+                #endif
+            } catch (const std::runtime_error & e) {
+                // Intentionally do nothing.  We're only using the exception as a
+                // short-circuiting mechanism.
             }
-        });
 
-        try {
-#if CPPNIX
-            store->narFromPath(storePath.value(), sink);
-#elif LIX_PRE_2_93
-            sink << store->narFromPath(storePath.value());
-#elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
-            aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
-#else
-            aio().blockOn(aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink));
-#endif
-        } catch (const std::runtime_error & e) {
-            // Intentionally do nothing.  We're only using the exception as a
-            // short-circuiting mechanism.
+            return RETURN_OK;
+        } else {
+            return RETURN_FAIL;
         }
 
-        return true;
-    } else {
-        return false;
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'dumpPath': " << e.what() << std::endl;
+        return RETURN_EXCEPTION;
     }
+    return RETURN_OK;
 }
 
-void dumpLog(char const * const baseName, struct string * const output) {
-    ref<Store> store = getStore();
+int dumpLog
+    ( char const * const url
+    , char const * const baseName
+    , struct string * const output
+    )
+{
+    try {
+        ref<Store> store = getStore(url);
 
-    StorePath storePath(baseName);
+        StorePath storePath(baseName);
 
-    auto subs = BLOCKON(getDefaultSubstituters());
+        auto subs = BLOCKON(getDefaultSubstituters());
 
-    subs.push_front(store);
+        subs.push_front(store);
 
-    *output = emptyString;
+        *output = emptyString;
 
-    for (auto & sub : subs) {
-        LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
+        for (auto & sub : subs) {
+            LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
 
-        std::optional<std::string> log = BLOCKON(logStore->getBuildLog(storePath));
+            std::optional<std::string> log = BLOCKON(logStore->getBuildLog(storePath));
 
-        if (log.has_value()) {
-            copyString(log.value(), output);
+            if (log.has_value()) {
+                copyString(log.value(), output);
+            }
         }
+
+        return RETURN_OK;
+    } catch(const std::exception& e) {
+        std::cout << "Exception in 'dumpLog': '" << e.what() << std::endl;
+        return RETURN_EXCEPTION;
     }
 }
 

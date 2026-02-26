@@ -1,13 +1,11 @@
-{-# LANGUAGE ApplicativeDo     #-}
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Options where
 
-import Control.Applicative (optional, (<|>))
+import Control.Applicative ((<|>), asum, optional)
 import Data.ByteString (ByteString)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Maybe (fromMaybe)
 import Data.String (IsString(..))
 import Data.Void (Void)
 import Network.Wai.Handler.Warp (HostPreference, Port)
@@ -15,10 +13,22 @@ import Numeric.Natural (Natural)
 import Options.Applicative (Parser, ParserInfo, ReadM)
 import Text.Megaparsec (Parsec)
 
+import qualified Data.List.NonEmpty              as NonEmpty
 import qualified Options.Applicative             as Options
 import qualified Options.Applicative.Help.Pretty as Options
 import qualified Text.Megaparsec                 as Megaparsec
 import qualified Text.Megaparsec.Char.Lexer      as Lexer
+
+data Options = Options
+    { socket       :: Socket
+    , ssl          :: SSL
+    , priority     :: Integer
+    , timeout      :: Natural
+    , logFormat    :: LogFormat
+    , storeURLs    :: NonEmpty ByteString
+    , retryTimeout :: Maybe Word
+    , cores        :: Maybe Int
+    }
 
 data Socket
     = TCP { host :: HostPreference, port :: Port }
@@ -32,33 +42,112 @@ data LogFormat = Quiet
                | Verbose
                | VerboseNoColor
 
-data Options = Options
-    { priority  :: Integer
-    , socket    :: Socket
-    , ssl       :: SSL
-    , store     :: Maybe ByteString
-    , timeout   :: Natural
-    , logFormat :: LogFormat
-    }
+parserInfo :: ParserInfo Options
+parserInfo = Options.info
+    (Options.helper <*> parseOptions)
+    (Options.progDesc "Serve the current Nix store as a binary cache")
 
-parseCert :: Parser FilePath
-parseCert =
-    Options.strOption
-        (   Options.long "ssl-cert"
-        <>  Options.help "The path to the SSL certificate file"
-        <>  Options.metavar "FILE"
-        )
+parseOptions :: Parser Options
+parseOptions = do
+    socket <- parseSocket <|> parseListen
+    priority <- parsePriority
+    ssl <- parseSsl <|> pure Disabled
+    timeout <- parseTimeout
+    logFormat <- parseLogFormat
+    storeURLs <- parseStores
+    retryTimeout <- parseRetryTimeout
+    cores <- parseCores
+    return Options{..}
 
-parseKey :: Parser FilePath
-parseKey =
-    Options.strOption
-        (   Options.long "ssl-key"
-        <>  Options.help "The path to the SSL key file"
-        <>  Options.metavar "FILE"
-        )
+parseSocket :: Parser Socket
+parseSocket = tcp <|> unix
+    where
+    tcp = do
+        host <- Options.strOption
+            (   Options.long "host"
+            <>  Options.help "The hostname to bind to"
+            <>  Options.metavar "*|*4|!4|*6|!6|IPv4|IPv6"
+                -- The default host for warp is "*4", but we specify a default of
+                -- "*" for backwards compatibility with nix-serve, which defaults to
+                -- binding to any IP address.  Also, binding to any IP address is
+                -- probably a better default anyway than binding to only IPv4
+                -- addresses.
+            <>  Options.value "*"
+            <>  Options.showDefaultWith (\_ -> "*")
+            )
 
-parseSslEnabled :: Parser SSL
-parseSslEnabled = do
+        port <- Options.option Options.auto
+            (   Options.long "port"
+            <>  Options.help "The port to bind to"
+            <>  Options.metavar "0-65535"
+                -- This is also for backwards compatibility with nix-serve, which
+                -- defaults to port 5000.
+            <>  Options.value 5000
+            )
+
+        return TCP{..}
+
+    unix = do
+      backlog <- Options.option Options.auto
+          (   Options.long "backlog"
+          <>  Options.help "The maximum number of connections allowed for the backlog"
+          <>  Options.metavar "INTEGER"
+          <>  Options.value 1024
+          )
+
+      path <- Options.strOption
+          (   Options.long "socket"
+          <>  Options.short 'S'
+          <>  Options.help "The socket to bind to"
+          <>  Options.metavar "PATH"
+          )
+
+      return Unix{..}
+
+-- This is only for backwards compatibility with nix-serve, which supports
+-- the --listen option
+parseListen :: Parser Socket
+parseListen = Options.option (parseReader $ tcp <|> unix)
+    (   Options.long "listen"
+    <>  Options.short 'l'
+    <>  Options.help "The TLS-enabled host and port to bind to"
+    <>  Options.metavar "[HOST]:PORT|UNIX_SOCKET"
+    <>  Options.hidden
+    )
+    where
+    tcp = do
+        host <- parseHost <|> pure "*"
+        _ <- ":"
+        port <- Lexer.decimal
+        _ <- optional ":ssl" -- See: [NOTE: enable-ssl]
+        return TCP{..}
+
+    unix = do
+        path <- Megaparsec.takeRest
+        return Unix{path, backlog = 1024}
+
+    parseHost = do
+        let ipv6 = Megaparsec.try do
+              proto <- Megaparsec.takeWhileP Nothing (/= '[') <* "["
+              addr <- Megaparsec.takeWhileP Nothing (/= ']') <* "]"
+              _ <- Megaparsec.lookAhead ":"
+              pure . fromString $ proto <> "[" <> addr <> "]"
+
+        let other = Megaparsec.takeWhileP Nothing (/= ':')
+
+        fmap fromString $ ipv6 <|> other
+
+
+parsePriority :: Parser Integer
+parsePriority = Options.option Options.auto
+    (   Options.long "priority"
+    <>  Options.help "The priority of the cache (lower is higher priority)"
+    <>  Options.metavar "INTEGER"
+    <>  Options.value 30
+    )
+
+parseSsl :: Parser SSL
+parseSsl = do
     -- [NOTE: enable-ssl]
     --
     -- We parse this for backwards compatibility with nix-serve, but ignore
@@ -69,80 +158,19 @@ parseSslEnabled = do
         <>  Options.internal
         )
 
-    cert <- parseCert
+    cert <- Options.strOption
+        (   Options.long "ssl-cert"
+        <>  Options.help "The path to the SSL certificate file"
+        <>  Options.metavar "FILE"
+        )
 
-    key <- parseKey
+    key <- Options.strOption
+        (   Options.long "ssl-key"
+        <>  Options.help "The path to the SSL key file"
+        <>  Options.metavar "FILE"
+        )
 
     return Enabled{..}
-
-parseSsl :: Parser SSL
-parseSsl = parseSslEnabled <|> pure Disabled
-
-parseStore :: Parser (Maybe ByteString)
-parseStore = optional $ Options.strOption
-  (   Options.long "store"
-  <>  Options.help "nix store uri. see: man nix3-help-stores"
-  <>  Options.metavar "STORE"
-  )
-
-parseTcp :: Parser Socket
-parseTcp = do
-    host <- Options.strOption
-        (   Options.long "host"
-        <>  Options.help "The hostname to bind to"
-        <>  Options.metavar "*|*4|!4|*6|!6|IPv4|IPv6"
-            -- The default host for warp is "*4", but we specify a default of
-            -- "*" for backwards compatibility with nix-serve, which defaults to
-            -- binding to any IP address.  Also, binding to any IP address is
-            -- probably a better default anyway than binding to only IPv4
-            -- addresses.
-        <>  Options.value "*"
-        <>  Options.showDefaultWith (\_ -> "*")
-        )
-
-    port <- Options.option Options.auto
-        (   Options.long "port"
-        <>  Options.help "The port to bind to"
-        <>  Options.metavar "0-65535"
-            -- This is also for backwards compatibility with nix-serve, which
-            -- defaults to port 5000.
-        <>  Options.value 5000
-        )
-
-    return TCP{..}
-
-defaultBacklog :: Natural
-defaultBacklog = 1024
-
-parseUnix :: Parser Socket
-parseUnix = do
-    backlog <- Options.option Options.auto
-        (   Options.long "backlog"
-        <>  Options.help "The maximum number of connections allowed for the backlog"
-        <>  Options.metavar "INTEGER"
-        <>  Options.value defaultBacklog
-        )
-
-    path <- Options.strOption
-        (   Options.long "socket"
-        <>  Options.short 'S'
-        <>  Options.help "The socket to bind to"
-        <>  Options.metavar "PATH"
-        )
-
-    return Unix{..}
-
-parseSocket :: Parser Socket
-parseSocket = parseTcp <|> parseUnix
-
-parsePriority :: Parser Integer
-parsePriority =
-    Options.option Options.auto
-        (   Options.long "priority"
-        <>  Options.help "The priority of the cache (lower is higher priority)"
-        <>  Options.metavar "INTEGER"
-        <>  Options.value 30
-        )
 
 parseTimeout :: Parser Natural
 parseTimeout =
@@ -156,22 +184,31 @@ parseTimeout =
         )
 
 parseLogFormat :: Parser LogFormat
-parseLogFormat =
-        Options.flag' Quiet
-            (   Options.long "quiet"
-            <>  Options.help "Disable logging. Alias for --log-format quiet"
-            )
-    <|> Options.flag' Verbose
-            (   Options.long "verbose"
-            <>  Options.help "Verbose logging. Alias for --log-format verbose"
-            )
-    <|> Options.option readLogFormat
-            (   Options.long "log-format"
-            <>  Options.metavar "FORMAT"
-            <>  Options.helpDoc (Just helpDoc)
-            <>  Options.value Apache
-            )
+parseLogFormat = asum [quiet, verbose, other]
   where
+    quiet = Options.flag' Quiet
+        (   Options.long "quiet"
+        <>  Options.help "Disable logging. Alias for --log-format quiet"
+        )
+    verbose = Options.flag' Verbose
+        (   Options.long "verbose"
+        <>  Options.help "Verbose logging. Alias for --log-format verbose"
+        )
+    other = Options.option readLogFormat
+        (   Options.long "log-format"
+        <>  Options.metavar "FORMAT"
+        <>  Options.helpDoc (Just helpDoc)
+        <>  Options.value Apache
+        )
+
+    readLogFormat = Options.maybeReader \case
+      "quiet" -> Just Quiet
+      "default" -> Just Apache
+      "real-ip" -> Just ApacheWithForwarding
+      "verbose" -> Just Verbose
+      "debug" -> Just VerboseNoColor
+      _ -> Nothing
+
     helpDoc = Options.nest 2 $ Options.vsep
       [ "Use of of these output formats:"
       , "quiet   - do not log"
@@ -181,30 +218,43 @@ parseLogFormat =
       , "debug   - verbose logging with uncolored output"
       ]
 
-readLogFormat :: Options.ReadM LogFormat
-readLogFormat = Options.maybeReader \case
-  "quiet" -> Just Quiet
-  "default" -> Just Apache
-  "real-ip" -> Just ApacheWithForwarding
-  "verbose" -> Just Verbose
-  "debug" -> Just VerboseNoColor
-  _ -> Nothing
 
-parseOptions :: Parser Options
-parseOptions = do
-    socket <- parseTcp <|> parseUnix
+parseStores :: Parser (NonEmpty ByteString)
+parseStores = fmap toNE . Options.many $ Options.strOption
+  (   Options.long "store"
+  <>  Options.helpDoc (Just helpDoc)
+  <>  Options.metavar "STORE"
+  )
+  where
+    toNE = fromMaybe (NonEmpty.singleton "") . NonEmpty.nonEmpty
+    helpDoc = Options.vsep
+        [ "nix store uri. see: man nix3-help-stores"
+        , "Maybe be provided more than once. Respects the `priority` setting if given multiple stores."
+        ]
 
-    ssl <- parseSsl
+parseRetryTimeout :: Parser (Maybe Word)
+parseRetryTimeout = optional $ Options.option Options.auto
+    (   Options.long "retry-timeout"
+    <>  Options.helpDoc (Just helpDoc)
+    <>  Options.metavar "SECONDS"
+    )
+    where
+      helpDoc = Options.hsep
+        [ "Timeout before retying a remote after a connection fails."
+        , "Default to nix.settings.connect-timeout"
+        ]
 
-    priority <- parsePriority
-
-    timeout <- parseTimeout
-
-    store <- parseStore
-
-    logFormat <- parseLogFormat
-
-    return Options{..}
+parseCores :: Parser (Maybe Int)
+parseCores = optional $ Options.option Options.auto
+    (   Options.long "cores"
+    <>  Options.helpDoc (Just helpDoc)
+    <>  Options.metavar "N"
+    )
+    where
+      helpDoc = Options.hsep
+        [ "The number of cores to use"
+        , "Defaults to the largest number of --store args with the same priority."
+        ]
 
 parseReader :: Parsec Void String a -> ReadM a
 parseReader parser =
@@ -212,68 +262,3 @@ parseReader parser =
         case Megaparsec.parse parser "(input)" string of
             Left bundle -> Left (Megaparsec.errorBundlePretty bundle)
             Right a     -> Right a
-
--- This is only for backwards compatibility with nix-serve, which supports
--- the --listen option
-parseListen :: Parser Options
-parseListen = do
-    let parseTcpListen :: Parsec Void String Socket
-        parseTcpListen = do
-            host <- parseHost <|> pure "*"
-
-            _ <- ":"
-
-            port <- Lexer.decimal
-
-            -- See: [NOTE: enable-ssl]
-            _ <- optional ":ssl"
-
-            return TCP{..}
-
-    let parseUnixListen :: Parsec Void String Socket
-        parseUnixListen = do
-            let backlog = defaultBacklog
-
-            path <- Megaparsec.takeRest
-
-            return Unix{..}
-
-    let parseSocketListen = parseTcpListen <|> parseUnixListen
-
-    ssl <- parseSsl
-
-    socket <- Options.option (parseReader parseSocketListen)
-        (   Options.long "listen"
-        <>  Options.short 'l'
-        <>  Options.help "The TLS-enabled host and port to bind to"
-        <>  Options.metavar "[HOST]:PORT|UNIX_SOCKET"
-        <>  Options.hidden
-        )
-
-    priority <- parsePriority
-
-    timeout <- parseTimeout
-
-    store <- parseStore
-
-    logFormat <- parseLogFormat
-
-    return Options{..}
-
-parserInfo :: ParserInfo Options
-parserInfo =
-    Options.info
-        (Options.helper <*> (parseOptions <|> parseListen))
-        (Options.progDesc "Serve the current Nix store as a binary cache")
-
-parseHost :: Parsec Void String HostPreference
-parseHost = do
-    let ipv6 = Megaparsec.try do
-          proto <- Megaparsec.takeWhileP Nothing (/= '[') <* "["
-          addr <- Megaparsec.takeWhileP Nothing (/= ']') <* "]"
-          _ <- Megaparsec.lookAhead ":"
-          pure . fromString $ proto <> "[" <> addr <> "]"
-
-    let other = Megaparsec.takeWhileP Nothing (/= ':')
-
-    fmap fromString $ ipv6 <|> other

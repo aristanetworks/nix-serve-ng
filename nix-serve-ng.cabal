@@ -21,7 +21,8 @@ executable nix-serve
 
     main-is:          Main.hs
 
-    other-modules:    Nix
+    other-modules:  , NixFFI
+                    , Nix
                     , Options
 
     -- https://nixos.org/manual/nix/stable/installation/supported-platforms.html
@@ -43,17 +44,26 @@ executable nix-serve
 
     cxx-options:      -std=c++20
 
-    build-depends:    base < 5
+    build-depends:  , base < 5
+                    , aeson
+                    , async
                     , base16 >= 1.0
                     , base32
                     , bytestring
                     , charset
+                    , containers
                     , http-types
                     , managed
                     , megaparsec
                     , mtl
                     , network
                     , optparse-applicative
+                    , safe-exceptions
+                    , text
+                    , time
+                    , transformers
+                    , unliftio
+                    , uri-bytestring
                     , vector
                     , wai
                     , wai-extra
@@ -77,9 +87,28 @@ executable nix-serve
     else
       buildable:      False
 
-    default-language: Haskell2010
+    default-language: GHC2024
 
-    ghc-options:      -Wall -threaded -O2 -rtsopts
+    default-extensions:
+      ApplicativeDo
+      BlockArguments
+      DeriveAnyClass
+      DerivingStrategies
+      DuplicateRecordFields
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      LambdaCase
+      MultiWayIf
+      NamedFieldPuns
+      OverloadedRecordDot
+      OverloadedStrings
+      TypeApplications
+      TupleSections
+
+    ghc-options:  -Wall -threaded -O2 -rtsopts
+                  -- Is there another way to get a sensible max
+                  -- for setNumCapabilities?
+                  "-with-rtsopts=-N"
 
 benchmark benchmark
     hs-source-dirs:   benchmark

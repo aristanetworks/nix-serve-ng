@@ -20,3 +20,9 @@ struct PathInfo {
     struct strings references;
     struct strings sigs;
 };
+
+typedef enum {
+    RETURN_OK        = 0,
+    RETURN_FAIL      = 1,
+    RETURN_EXCEPTION = 2,
+} ffi_return_codes_t;

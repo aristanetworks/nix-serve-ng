@@ -1,8 +1,4 @@
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE MultiWayIf        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -12,11 +8,11 @@ import Data.CharSet.ByteSet (ByteSet(..))
 import Data.Function ((&))
 import Network.Socket (SockAddr(..))
 import Network.Wai (Application)
-import Nix (NoSuchPath(..), PathInfo(..))
 import Numeric.Natural (Natural)
 import Options (Options(..), Socket(..), SSL(..), LogFormat(..))
 
-import qualified Control.Exception                    as Exception
+import qualified Control.Concurrent.Async             as Async
+import qualified Data.List.NonEmpty                   as NonEmpty
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
 import qualified Data.ByteString                      as ByteString
@@ -24,6 +20,7 @@ import qualified Data.ByteString.Char8                as ByteString.Char8
 import qualified Data.ByteString.Builder              as Builder
 import qualified Data.ByteString.Lazy                 as ByteString.Lazy
 import qualified Data.CharSet.ByteSet                 as ByteSet
+import qualified Data.List                            as List
 import qualified Data.Vector                          as Vector
 import qualified Data.Void                            as Void
 import qualified Network.HTTP.Types                   as Types
@@ -32,15 +29,19 @@ import qualified Network.Wai                          as Wai
 import qualified Network.Wai.Handler.Warp             as Warp
 import qualified Network.Wai.Handler.WarpTLS          as WarpTLS
 import qualified Network.Wai.Middleware.RequestLogger as RequestLogger
-import qualified Nix
 import qualified Options
 import qualified Options.Applicative                  as Options
 import qualified System.Environment                   as Environment
 
+import Nix (Stores, PathInfo(..), Color(..))
+import qualified Nix
+
 data ApplicationOptions = ApplicationOptions
     { priority       :: Integer
     , storeDirectory :: ByteString
+    , stores         :: Stores
     , secretKey      :: Maybe ByteString
+    , logFormat      :: LogFormat
     }
 
 -- https://github.com/NixOS/nix/blob/2.8.1/src/libutil/hash.cc#L83-L84
@@ -58,12 +59,14 @@ validHashPart :: ByteString -> Bool
 validHashPart hash = ByteString.all (`ByteSet.member` validHashPartBytes) hash
 
 makeApplication :: ApplicationOptions -> Application
-makeApplication ApplicationOptions{..} request respond = do
-    let stripStore = ByteString.stripPrefix (storeDirectory <> "/")
+makeApplication opts request respond = do
+
+    let stripStore = ByteString.stripPrefix (opts.storeDirectory <> "/")
 
     let done = Except.throwError
 
-    let internalError message = do
+    let internalError :: Builder.Builder -> Except.ExceptT Wai.Response IO a
+        internalError message = do
             let headers = [ ("Content-Type", "text/plain") ]
 
             let builder = "Internal server error: " <> message <> ".\n"
@@ -76,7 +79,8 @@ makeApplication ApplicationOptions{..} request respond = do
 
             done response
 
-    let noSuchPath = do
+    let noSuchPath :: Except.ExceptT Wai.Response IO a
+        noSuchPath = do
             let headers = [ ("Content-Type", "text/plain") ]
 
             let builder = "No such path.\n"
@@ -89,7 +93,8 @@ makeApplication ApplicationOptions{..} request respond = do
 
             done response
 
-    let invalidPath = do
+    let invalidPath :: Except.ExceptT Wai.Response IO a
+        invalidPath = do
             let headers = [ ("Content-Type", "text/plain") ]
 
             let builder = "Invalid path.\n"
@@ -102,6 +107,19 @@ makeApplication ApplicationOptions{..} request respond = do
 
             done response
 
+    let queryPathInfoFromHashPart hashPart = do
+          -- TODO: Maybe we should cancel the queries that lose the race?
+          -- Choosing not to becasue it's possible it may invalidate connections
+          -- for some store types, and it's hard to test.
+          let raceQuery = mapRace (flip Nix.queryPathInfoFromHashPart hashPart)
+          result <- liftIO $ findJustM raceQuery (Nix.priorityGroups opts.stores)
+
+          let logged (store, (storePath, pathInfo)) = do
+                  liftIO $ Nix.logMsg Blue store "Using" []
+                  pure (store, storePath, pathInfo)
+
+          maybe noSuchPath logged result
+
     result <- Except.runExceptT do
         let rawPath = Wai.rawPathInfo request
 
@@ -110,21 +128,15 @@ makeApplication ApplicationOptions{..} request respond = do
                 Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
                     invalidPath
 
-                maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
+                (_, storePath, pathInfo) <- queryPathInfoFromHashPart hashPart
 
-                storePath <- case maybeStorePath of
-                    Left NoSuchPath -> noSuchPath
-                    Right storePath -> return storePath
-
-                pathInfo@PathInfo{..} <- liftIO (Nix.queryPathInfo storePath)
-
-                narHash2 <- case ByteString.stripPrefix "sha256:" narHash of
+                narHash2 <- case ByteString.stripPrefix "sha256:" pathInfo.narHash of
                     Nothing -> do
                         internalError "NAR hash missing sha256: prefix"
                     Just narHash2 -> do
                         return narHash2
 
-                referenceNames <- case traverse stripStore references of
+                referenceNames <- case traverse stripStore pathInfo.references of
                     Nothing -> do
                         internalError "references missing store directory prefix"
                     Just names -> do
@@ -139,7 +151,7 @@ makeApplication ApplicationOptions{..} request respond = do
                             mempty
 
                 deriverBuilder <-
-                    case deriver of
+                    case pathInfo.deriver of
                         Just d ->
                             case stripStore d of
                                 Just name ->
@@ -160,14 +172,14 @@ makeApplication ApplicationOptions{..} request respond = do
                     Just builder -> do
                         return (ByteString.Lazy.toStrict (Builder.toLazyByteString builder))
 
-                signatures <- case secretKey of
+                signatures <- case opts.secretKey of
                     Just key -> do
                         signature <- liftIO (Nix.signString key fingerprint)
 
                         return (Vector.singleton signature)
 
                     Nothing -> do
-                        return sigs
+                        return pathInfo.sigs
 
                 let buildSignature signature =
                         "Sig: " <> Builder.byteString signature <> "\n"
@@ -180,9 +192,9 @@ makeApplication ApplicationOptions{..} request respond = do
                         <>  "-"
                         <>  Builder.byteString narHash2
                         <>  ".nar\nCompression: none\nNarHash: "
-                        <>  Builder.byteString narHash
+                        <>  Builder.byteString pathInfo.narHash
                         <>  "\nNarSize: "
-                        <>  Builder.word64Dec narSize
+                        <>  Builder.word64Dec pathInfo.narSize
                         <>  "\n"
                         <>  referencesBuilder
                         <>  deriverBuilder
@@ -228,13 +240,7 @@ makeApplication ApplicationOptions{..} request respond = do
                 Monad.unless (validHashPart hashPart) do
                     invalidPath
 
-                maybeStorePath <- liftIO (Nix.queryPathFromHashPart hashPart)
-
-                storePath <- case maybeStorePath of
-                    Left  NoSuchPath-> noSuchPath
-                    Right storePath -> return storePath
-
-                PathInfo{ narHash } <- liftIO (Nix.queryPathInfo storePath)
+                (store, _, PathInfo{narHash}) <- queryPathInfoFromHashPart hashPart
 
                 Monad.unless (all (narHash ==) maybeExpectedNarHash) do
                     let headers = [ ("Content-Type", "text/plain") ]
@@ -250,16 +256,8 @@ makeApplication ApplicationOptions{..} request respond = do
 
                     done response
 
-                let streamingBody write flush = do
-                       result <- Nix.dumpPath hashPart callback
-
-                       case result of
-                           Left  exception -> Exception.throwIO exception
-                           Right x         -> return x
-                      where
-                        callback builder = do
-                            () <- write builder
-                            flush
+                let streamingBody write flush = Nix.dumpPath store hashPart callback
+                      where callback builder = write builder >> flush
 
                 let headers = [ ("Content-Type", "text/plain") ]
 
@@ -274,7 +272,10 @@ makeApplication ApplicationOptions{..} request respond = do
                 Monad.unless (ByteString.length hashPart == 32 && validHashPart hashPart) do
                     invalidPath
 
-                maybeBytes <- liftIO (Nix.dumpLog suffix)
+                -- TODO: This could be split into a path query / dump like we do for nars
+                -- so we can race the queries, but this isn't a hot path operation
+                -- so there is less of a benefit.
+                maybeBytes <- liftIO $ findJustM (flip Nix.dumpLog suffix) (Nix.storeList opts.stores)
 
                 bytes <- case maybeBytes of
                     Nothing    -> noSuchPath
@@ -294,9 +295,9 @@ makeApplication ApplicationOptions{..} request respond = do
 
                 let builder =
                             "StoreDir: "
-                        <>  Builder.byteString storeDirectory
+                        <>  Builder.byteString opts.storeDirectory
                         <>  "\nWantMassQuery: 1\nPriority: "
-                        <>  Builder.integerDec priority
+                        <>  Builder.integerDec opts.priority
                         <>  "\n"
 
                 let response =
@@ -318,6 +319,25 @@ makeApplication ApplicationOptions{..} request respond = do
         Left response -> respond response
         Right void    -> Void.absurd void
 
+findJustM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
+findJustM act = go
+  where
+  go []     = pure Nothing
+  go (x:xs) = act x >>= maybe (go xs) (pure . pure)
+
+mapRace :: (a -> IO (Maybe b)) -> [a] -> IO (Maybe (a, b))
+mapRace _   []  = pure Nothing
+mapRace act [x] = fmap (x,) <$> act x
+mapRace act xs  = mapM (\x -> (fmap . fmap . fmap) (x,) . Async.async $ act x) xs >>= go
+  where
+  -- This use of `List.delete` is O(n^2) in the the length of xs,
+  -- but for relatively small xs, it should still be cheap
+  -- relative to the cost of `act`
+  go [] = pure Nothing
+  go as = do
+    (a, v) <- Async.waitAny as
+    maybe (go $ List.delete a as) (pure . pure) v
+
 toSocket :: Natural -> FilePath -> IO Socket.Socket
 toSocket backlog path = do
     let family = Socket.AF_UNIX
@@ -338,10 +358,9 @@ readSecretKey = fmap ByteString.Char8.strip . ByteString.readFile
 
 main :: IO ()
 main = do
-    options@Options{ priority, store, timeout, logFormat } <- do
-        Options.execParser Options.parserInfo
+    opts@Options{priority, logFormat} <- Options.execParser Options.parserInfo
 
-    maybe Nix.initStore Nix.initStoreUri store
+    stores <- Nix.initStores opts.retryTimeout opts.cores logFormat $ NonEmpty.toList opts.storeURLs
 
     storeDirectory <- Nix.getStoreDir
 
@@ -362,9 +381,9 @@ main = do
 
     let sharedSettings =
             Warp.defaultSettings
-                & Warp.setTimeout (fromIntegral timeout)
+                & Warp.setTimeout (fromIntegral opts.timeout)
 
-    case options of
+    case opts of
         Options{ ssl = Disabled, socket = TCP{ host, port } } -> do
             let settings =
                     sharedSettings

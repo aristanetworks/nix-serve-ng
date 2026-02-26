@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-25.11";
 
     lix-2_92_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.92.3";
     lix-2_93_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.93.3";
@@ -17,7 +17,7 @@
   outputs =
     { nixpkgs, utils, ... }@inputs:
     let
-      compiler = "ghc984";
+      compiler = "ghc9103";
 
       patches = {
         lix = {
@@ -85,10 +85,16 @@
                           ++ final.lib.optional (nix.pname == "lix") "-flix";
 
                         executableSystemDepends = (old.executableSystemDepends or [ ]) ++ [
-                          patchedNix
+                          patchedNix.dev
                           final.boost.dev
+                          final.libcpuid
+                          final.libseccomp
                         ] ++ final.lib.optionals (nix.pname == "lix" && builtins.compareVersions nix.version "2.93.0" >= 0) [
+                          final.aws-sdk-cpp
                           final.capnproto
+                        ] ++ final.lib.optionals (nix.pname == "nix") [
+                          final.libblake3
+                          final.libsodium
                         ];
 
                         passthru = (old.passthru or { }) // {
