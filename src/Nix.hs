@@ -15,6 +15,7 @@ module Nix (
   dumpPath,
   dumpLog,
   -- Logging to stdout
+  LogLevel(..),
   Color(..),
   colored,
   logMsg,
@@ -30,7 +31,6 @@ import Data.ByteString.Builder (Builder)
 import Data.Either (partitionEithers)
 import Data.Foldable (for_)
 import Data.Function ((&))
-import Data.Functor ((<&>))
 import Data.IntMap (IntMap)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -50,7 +50,6 @@ import Data.Fixed qualified as Fixed
 import Data.IntMap qualified as IntMap
 import Data.List qualified as List
 import Data.Time.Clock qualified as Time
-import Data.Time.Format.ISO8601 qualified as Time
 import Data.Time.LocalTime qualified as Time
 import URI.ByteString qualified as URI
 
@@ -176,9 +175,16 @@ queryPathInfoFromHashPart store hashPart = do
   pure $ join result
 
 dumpPath :: Store -> ByteString -> (Builder -> IO ()) -> IO ()
-dumpPath store hashPath builderCallback = do
-  result <- withTimeout store \url -> NixFFI.dumpPath url hashPath builderCallback
-  maybe (Exception.throwIO CppException) pure result
+dumpPath store hashPart builderCallback = do
+  result <- withTimeout store \url -> NixFFI.dumpPath url hashPart builderCallback
+  maybe (Exception.throwIO $ PathGoneException store hashPart) pure result
+
+data PathGoneException = PathGoneException Store ByteString
+instance Exception PathGoneException
+instance Show PathGoneException where
+  show (PathGoneException store hashPart) = C8.unpack $
+    "Info for " <> hashPart <> " found in " <> store.storeURL <> " but path is gone"
+
 
 dumpLog :: Store -> ByteString -> IO (Maybe ByteString)
 dumpLog store baseName = do
@@ -236,7 +242,7 @@ disableStore restore store = modifyMVar_ store.storeVar \st@StoreState{enabled, 
         let disabledUntil = Time.addUTCTime (fromIntegral store.timeout) disabledSince
         zonedUntil <- Time.utcToLocalZonedTime disabledUntil
 
-        logMsg Red store "Disabled" [("until", Aeson.toJSON zonedUntil), ("failures", Aeson.toJSON failures)]
+        logMsg Info Red store "Disabled" [("until", Aeson.toJSON zonedUntil), ("failures", Aeson.toJSON failures)]
 
         pure st{enabled = Disabled{disabledUntil}}
 
@@ -245,7 +251,7 @@ reenableStore :: Enabled -> Store -> IO ()
 reenableStore restore store = modifyMVar_ store.storeVar \st@StoreState{enabled, failures} -> case enabled of
   Disabled{} -> do
     when (restore == Enabled) do
-      logMsg Green store "Enabled" [("failures", Aeson.toJSON failures)]
+      logMsg Info Green store "Enabled" [("failures", Aeson.toJSON failures)]
     pure st{enabled = restore, failures = failures + 1}
   _          -> pure st
 
@@ -256,7 +262,7 @@ resetStore prior store = modifyMVar_ store.storeVar \st@StoreState{enabled} -> c
   Disabled{} -> pure st
   _          -> do
     when (prior == PreInit) do
-      logMsg Green store "Enabled" []
+      logMsg Info Green store "Enabled" []
     pure st{enabled = Enabled, failures = 0}
 
 delaySecs :: Real a => a -> IO ()
@@ -264,19 +270,25 @@ delaySecs = Concurrent.threadDelay . fromInteger
           . \case Fixed.MkFixed n -> n
           . fromRational @Fixed.Micro . toRational
 
+data LogLevel =  Info | Debug
+
 data Color = Red | Yellow | Green | Blue
 
-logMsg :: Color -> Store -> Builder -> [(Text, Aeson.Value)] -> IO ()
-logMsg color store event val = do
-  zoned <- Time.getZonedTime <&> Builder.stringUtf8 . Time.iso8601Show
-  let msg hi = zoned <> " " <> hi event <> " " <> url <> json
-
-  case store.logFormat of
-    Verbose        -> putLn $ msg (colored color)
-    VerboseNoColor -> putLn $ msg id
-    _              -> pure ()
+logMsg :: LogLevel -> Color -> Store -> Builder -> [(Text, Aeson.Value)] -> IO ()
+logMsg level color store event val = when shouldLog do
+  Builder.hPutBuilder stdout $ highlight event <> " " <> url <> json <> "\n"
   where
-    putLn str = Builder.hPutBuilder stdout $ str <> "\n"
+    shouldLog = case (level, store.logFormat) of
+      (_    , Quiet         ) -> False
+      (Info , _             ) -> True
+      (Debug, Verbose       ) -> True
+      (Debug, VerboseNoColor) -> True
+      _                       -> False
+
+    highlight = case store.logFormat of
+      Verbose -> colored color
+      _       -> id
+
     url  = Builder.byteString store.storeURL
     json | val == [] = ""
          | otherwise = " " <> (Aeson.fromEncoding . Aeson.toEncoding) val

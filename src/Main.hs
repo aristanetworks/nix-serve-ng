@@ -33,7 +33,7 @@ import qualified Options
 import qualified Options.Applicative                  as Options
 import qualified System.Environment                   as Environment
 
-import Nix (Stores, PathInfo(..), Color(..))
+import Nix (Stores, PathInfo(..), LogLevel(..), Color(..))
 import qualified Nix
 
 data ApplicationOptions = ApplicationOptions
@@ -115,7 +115,7 @@ makeApplication opts request respond = do
           result <- liftIO $ findJustM raceQuery (Nix.priorityGroups opts.stores)
 
           let logged (store, (storePath, pathInfo)) = do
-                  liftIO $ Nix.logMsg Blue store "Using" []
+                  liftIO $ Nix.logMsg Debug Blue store "Using" []
                   pure (store, storePath, pathInfo)
 
           maybe noSuchPath logged result
