@@ -183,7 +183,7 @@ dumpPath store hashPath builderCallback = do
 dumpLog :: Store -> ByteString -> IO (Maybe ByteString)
 dumpLog store baseName = do
   result <- withTimeout store \url -> NixFFI.dumpLog url baseName
-  maybe (Exception.throwIO CppException) pure result
+  pure $ join result
 
 parseStoreURL :: ByteString -> Either ByteString (ByteString, URI)
 parseStoreURL url = either Left check parsed

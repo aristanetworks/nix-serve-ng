@@ -54,7 +54,7 @@ static AsyncIoRoot & aio()
 
 #if CPPNIX || LIX_PRE_2_93
 
-typedef std::shared_ptr<Store> StorePtr
+typedef std::shared_ptr<Store> StorePtr;
 #define OPEN_STORE(X) X == "" ? openStore() : openStore(X)
 #define STORE_REF(X) ref<Store>(X)
 
@@ -68,7 +68,7 @@ static void insertStore(std::string url, StorePtr store) {
 
 static StorePtr lookupStore(std::string url) {
     std::lock_guard<std::mutex> guard(_stores_mutex);
-    return *_stores[url];
+    return _stores.at(url);
 }
 
 #else
@@ -86,7 +86,7 @@ static void insertStore(std::string url, StorePtr store) {
 
 static StorePtr lookupStore(std::string url) {
     auto _stores_(_stores.lock());
-    return (*_stores_)[url];
+    return (*_stores_).at(url);
 }
 
 #endif
@@ -111,16 +111,22 @@ static ref<Store> getStore(std::string const url, bool cached = true)
 extern "C" {
 
 // Must be called once before the server is stated to avoid races
-int initStore(char const * const url)
+ffi_return_codes_t initStore(char const * const url)
 {
     static bool _initDone = false;
-    if (!_initDone) {
-        #if CPPNIX
-        initLibStore(true);
-        #else
-        initNix();
-        #endif
-        _initDone = true;
+
+    try {
+        if (!_initDone) {
+            #if CPPNIX
+            initLibStore(true);
+            #else
+            initNix();
+            #endif
+            _initDone = true;
+        }
+    } catch(const std::exception& e) {
+        std::cout << "Fatal exception in initializing nix: " << e.what() << std::endl;
+        return RETURN_EXCEPTION;
     }
 
     try {
@@ -206,7 +212,7 @@ unsigned long getMaxConnectTimeout()
     #endif
 }
 
-int queryPathFromHashPart
+ffi_return_codes_t queryPathFromHashPart
     ( char const * const url
     , char const * const hashPart
     , struct string * const output
@@ -230,7 +236,7 @@ int queryPathFromHashPart
     return RETURN_OK;
 }
 
-int queryPathInfo
+ffi_return_codes_t queryPathInfo
     ( char const * const url
     , char const * const storePath
     , PathInfo * const output
@@ -289,7 +295,7 @@ void freePathInfo(struct PathInfo * const input)
 }
 
 // TODO: This can be done in Haskell using the `ed25519` package
-int signString
+ffi_return_codes_t signString
     ( char const * const secretKey
     , char const * const message
     , struct string * const output
@@ -311,7 +317,7 @@ int signString
     return RETURN_OK;
 }
 
-bool dumpPath
+ffi_return_codes_t dumpPath
     ( char const * const url
     , char const * const hashPart
     , bool (* const callback)(char const * const data, size_t const size)
@@ -362,7 +368,7 @@ bool dumpPath
     return RETURN_OK;
 }
 
-int dumpLog
+ffi_return_codes_t dumpLog
     ( char const * const url
     , char const * const baseName
     , struct string * const output
@@ -381,6 +387,8 @@ int dumpLog
 
         for (auto & sub : subs) {
             LogStore * logStore = dynamic_cast<LogStore *>(&*sub);
+
+            if (!logStore) continue;
 
             std::optional<std::string> log = BLOCKON(logStore->getBuildLog(storePath));
 

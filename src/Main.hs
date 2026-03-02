@@ -325,6 +325,8 @@ findJustM act = go
   go []     = pure Nothing
   go (x:xs) = act x >>= maybe (go xs) (pure . pure)
 
+-- NOTE: This intentionally does not cancel the other asyncs
+-- so it should only be used with short lived actions.
 mapRace :: (a -> IO (Maybe b)) -> [a] -> IO (Maybe (a, b))
 mapRace _   []  = pure Nothing
 mapRace act [x] = fmap (x,) <$> act x
