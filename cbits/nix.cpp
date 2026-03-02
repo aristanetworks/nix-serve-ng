@@ -22,11 +22,13 @@
     #include <nix/main/shared.hh>
     #include <nix/store/filetransfer.hh>
     #include <nix/store/store-api.hh>
+    #include <nix/store/local-store.hh>
     #include <nix/store/log-store.hh>
 #else
     #include <lix/config.h>
     #include <lix/libmain/shared.hh>
     #include <lix/libstore/filetransfer.hh>
+    #include <lix/libstore/local-store.hh>
     #include <lix/libstore/log-store.hh>
     #include <lix/libstore/store-api.hh>
     #if LIX_POST_2_93
@@ -379,7 +381,9 @@ ffi_return_codes_t dumpLog
 
         StorePath storePath(baseName);
 
-        auto subs = BLOCKON(getDefaultSubstituters());
+        auto subs = dynamic_cast<LocalStore *>(&*store)
+                  ? BLOCKON(getDefaultSubstituters())
+                  : std::list<ref<Store>>();
 
         subs.push_front(store);
 
