@@ -63,10 +63,14 @@ parseSocket :: Parser Socket
 parseSocket = tcp <|> unix
     where
     tcp = do
+        let hostDoc = Options.nest 2 $ Options.vsep
+              [ "The hostname to bind to. Can be one of the special values:"
+              , "*|*4|!4|*6|!6|IPv4|IPv6" ]
+
         host <- Options.strOption
             (   Options.long "host"
-            <>  Options.help "The hostname to bind to"
-            <>  Options.metavar "*|*4|!4|*6|!6|IPv4|IPv6"
+            <>  Options.helpDoc (Just hostDoc)
+            <>  Options.metavar "HOST"
                 -- The default host for warp is "*4", but we specify a default of
                 -- "*" for backwards compatibility with nix-serve, which defaults to
                 -- binding to any IP address.  Also, binding to any IP address is
@@ -78,11 +82,13 @@ parseSocket = tcp <|> unix
 
         port <- Options.option Options.auto
             (   Options.long "port"
-            <>  Options.help "The port to bind to"
-            <>  Options.metavar "0-65535"
+            <>  Options.short 'p'
+            <>  Options.help "The port to bind to: 0-65535"
+            <>  Options.metavar "PORT"
                 -- This is also for backwards compatibility with nix-serve, which
                 -- defaults to port 5000.
             <>  Options.value 5000
+            <>  Options.showDefault
             )
 
         return TCP{..}
@@ -91,8 +97,9 @@ parseSocket = tcp <|> unix
       backlog <- Options.option Options.auto
           (   Options.long "backlog"
           <>  Options.help "The maximum number of connections allowed for the backlog"
-          <>  Options.metavar "INTEGER"
+          <>  Options.metavar "N"
           <>  Options.value 1024
+          <>  Options.showDefault
           )
 
       path <- Options.strOption
@@ -110,11 +117,16 @@ parseListen :: Parser Socket
 parseListen = Options.option (parseReader $ tcp <|> unix)
     (   Options.long "listen"
     <>  Options.short 'l'
-    <>  Options.help "The TLS-enabled host and port to bind to"
-    <>  Options.metavar "[HOST]:PORT|UNIX_SOCKET"
+    <>  Options.helpDoc (Just helpDoc)
+    <>  Options.metavar "ADDR"
     <>  Options.hidden
     )
     where
+    helpDoc = Options.vsep
+      [ "The TLS-enabled host and port to bind to in the format:"
+      , "  [HOST]:PORT|UNIX_SOCKET"
+      , "(provided to backwards compatibility)" ]
+
     tcp = do
         host <- parseHost <|> pure "*"
         _ <- ":"
@@ -177,7 +189,7 @@ parseTimeout =
     Options.option Options.auto
         (   Options.long "timeout"
         <>  Options.help "Timeout for requests"
-        <>  Options.metavar "SECONDS"
+        <>  Options.metavar "SECS"
             -- nix-serve does not timeout requests, but warp insists on a
             -- timeout, so we use the same default timeout as hydra
         <>  Options.value (10 * 60)
@@ -229,17 +241,18 @@ parseStores = fmap toNE . Options.many $ Options.strOption
     toNE = fromMaybe (NonEmpty.singleton "") . NonEmpty.nonEmpty
     helpDoc = Options.vsep
         [ "nix store uri. see: man nix3-help-stores"
-        , "Maybe be provided more than once. Respects the `priority` setting if given multiple stores."
+        , "Maybe be provided more than once."
+        , "Respects the `priority` setting if given multiple stores."
         ]
 
 parseRetryTimeout :: Parser (Maybe Word)
 parseRetryTimeout = optional $ Options.option Options.auto
     (   Options.long "retry-timeout"
     <>  Options.helpDoc (Just helpDoc)
-    <>  Options.metavar "SECONDS"
+    <>  Options.metavar "SECS"
     )
     where
-      helpDoc = Options.hsep
+      helpDoc = Options.vsep
         [ "Timeout before retying a remote after a connection fails."
         , "Default to nix.settings.connect-timeout"
         ]
@@ -251,9 +264,10 @@ parseCores = optional $ Options.option Options.auto
     <>  Options.metavar "N"
     )
     where
-      helpDoc = Options.hsep
+      helpDoc = Options.vsep
         [ "The number of cores to use"
-        , "Defaults to the largest number of --store args with the same priority."
+        , "Defaults to the largest number of"
+        , "--store args with the same priority."
         ]
 
 parseReader :: Parsec Void String a -> ReadM a
