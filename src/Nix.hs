@@ -18,6 +18,8 @@ module Nix (
   Color(..),
   colored,
   logMsg,
+  -- Convenience reexport from Aeson
+  (.=)
 ) where
 
 import Control.Applicative (empty)
@@ -25,6 +27,7 @@ import Control.Exception.Safe (Exception)
 import Control.Monad (guard, join, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe (MaybeT(..))
+import Data.Aeson ((.=))
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Either (partitionEithers)
@@ -32,7 +35,6 @@ import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.IntMap (IntMap)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
 import Data.Time.Clock (UTCTime)
 import System.IO (stdout)
 import URI.ByteString (URIRef(..), Scheme(schemeBS), Query(queryPairs))
@@ -242,7 +244,7 @@ disableStore restore store = modifyMVar_ store.storeVar \st@StoreState{enabled, 
         let disabledUntil = Time.addUTCTime (fromIntegral store.timeout) disabledSince
         zonedUntil <- Time.utcToLocalZonedTime disabledUntil
 
-        logMsg Info Red store "Disabled" [("until", Aeson.toJSON zonedUntil), ("failures", Aeson.toJSON failures)]
+        logMsg Info Red store "Disabled" ("until" .= zonedUntil <> "failures" .= failures)
 
         pure st{enabled = Disabled{disabledUntil}}
 
@@ -251,7 +253,7 @@ reenableStore :: Enabled -> Store -> IO ()
 reenableStore restore store = modifyMVar_ store.storeVar \st@StoreState{enabled, failures} -> case enabled of
   Disabled{} -> do
     when (restore == Enabled) do
-      logMsg Info Green store "Enabled" [("failures", Aeson.toJSON failures)]
+      logMsg Info Green store "Enabled" ("failures" .= failures)
     pure st{enabled = restore, failures = failures + 1}
   _          -> pure st
 
@@ -262,7 +264,7 @@ resetStore prior store = modifyMVar_ store.storeVar \st@StoreState{enabled} -> c
   Disabled{} -> pure st
   _          -> do
     when (prior == PreInit) do
-      logMsg Info Green store "Enabled" []
+      logMsg Info Green store "Enabled" mempty
     pure st{enabled = Enabled, failures = 0}
 
 delaySecs :: Real a => a -> IO ()
@@ -274,9 +276,9 @@ data LogLevel =  Info | Debug
 
 data Color = Red | Yellow | Green | Blue
 
-logMsg :: LogLevel -> Color -> Store -> Builder -> [(Text, Aeson.Value)] -> IO ()
-logMsg level color store event val = when shouldLog do
-  Builder.hPutBuilder stdout $ highlight event <> " " <> url <> json <> "\n"
+logMsg :: LogLevel -> Color -> Store -> Builder -> Aeson.Series -> IO ()
+logMsg level color store event series = when shouldLog do
+  Builder.hPutBuilder stdout $ highlight event <> " " <> url <> " " <> json <> "\n"
   where
     shouldLog = case (level, store.logFormat) of
       (_    , Quiet         ) -> False
@@ -289,10 +291,10 @@ logMsg level color store event val = when shouldLog do
       Verbose -> colored color
       _       -> id
 
-    url  = Builder.byteString store.storeURL
-    json | val == [] = ""
-         | otherwise = " " <> (Aeson.fromEncoding . Aeson.toEncoding) val
+    url | store.parsedURI.uriPath == "" = "daemon"
+        | otherwise = Builder.byteString store.storeURL
 
+    json = Aeson.fromEncoding $ Aeson.pairs series
 
 colored :: Color -> Builder -> Builder
 colored color str = "\o33[" <> ansiCode color <> "m" <> str <> "\o33[0m"

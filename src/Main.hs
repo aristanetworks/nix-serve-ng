@@ -14,7 +14,6 @@ import Options (Options(..), Socket(..), SSL(..), LogFormat(..))
 import qualified Control.Concurrent.Async             as Async
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
-import qualified Data.Aeson                           as Aeson
 import qualified Data.ByteString                      as ByteString
 import qualified Data.ByteString.Char8                as ByteString.Char8
 import qualified Data.ByteString.Builder              as Builder
@@ -35,7 +34,7 @@ import qualified Options
 import qualified Options.Applicative                  as Options
 import qualified System.Environment                   as Environment
 
-import Nix (Stores, PathInfo(..), LogLevel(..), Color(..))
+import Nix (Stores, PathInfo(..), LogLevel(..), Color(..), (.=))
 import qualified Nix
 
 data ApplicationOptions = ApplicationOptions
@@ -113,10 +112,11 @@ makeApplication opts request respond = do
           let raceQuery = mapRace (flip Nix.queryPathInfoFromHashPart hashPart)
           result <- liftIO $ findJustM raceQuery (Nix.priorityGroups opts.stores)
 
-          let logged (store, (storePath, pathInfo)) = do
-                  let toValue = Aeson.toJSON . Text.decodeUtf8Lenient
-                  liftIO $ Nix.logMsg Debug Blue store "Found" [ ("hashPart", toValue hashPart)
-                                                               , ("storePath", toValue storePath) ]
+          let logged (store, (storePath, pathInfo)) = liftIO do
+                  Nix.logMsg Debug Blue store "Found" $ mconcat
+                      [ "hashPart"  .= Text.decodeUtf8Lenient hashPart
+                      , "storePath" .= Text.decodeUtf8Lenient storePath
+                      ]
                   pure (store, storePath, pathInfo)
 
           maybe noSuchPath logged result
