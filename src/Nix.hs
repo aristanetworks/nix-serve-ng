@@ -77,7 +77,7 @@ priorityGroups = IntMap.elems . stores
 storeList :: Stores -> [Store]
 storeList = concat . priorityGroups
 
--- Tracking for exponential Timeout
+-- Tracking for timeout
 data StoreState = StoreState
   { enabled   :: Enabled
   , failures  :: Int
