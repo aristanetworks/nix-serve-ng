@@ -40,19 +40,19 @@ import System.IO (stdout)
 import URI.ByteString (URIRef(..), Scheme(schemeBS), Query(queryPairs))
 import UnliftIO.MVar (MVar, newMVar, readMVar, modifyMVar_)
 
-import Control.Concurrent qualified as Concurrent
+import Control.Concurrent       qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
-import Control.Concurrent.Chan qualified as Chan
-import Control.Exception.Safe qualified as Exception
-import Data.Aeson qualified as Aeson
-import Data.ByteString.Builder qualified as Builder
-import Data.ByteString.Char8 qualified as C8
-import Data.Fixed qualified as Fixed
-import Data.IntMap qualified as IntMap
-import Data.List qualified as List
-import Data.Time.Clock qualified as Time
-import Data.Time.LocalTime qualified as Time
-import URI.ByteString qualified as URI
+import Control.Concurrent.Chan  qualified as Chan
+import Control.Exception.Safe   qualified as Exception
+import Data.Aeson               qualified as Aeson
+import Data.ByteString.Builder  qualified as Builder
+import Data.ByteString.Char8    qualified as C8
+import Data.Fixed               qualified as Fixed
+import Data.IntMap              qualified as IntMap
+import Data.List                qualified as List
+import Data.Time.Clock          qualified as Time
+import Data.Time.LocalTime      qualified as Time
+import URI.ByteString           qualified as URI
 
 import NixFFI ( CppException(..), PathInfo(..)
               , getStoreDir, fingerprintPath, signString )
