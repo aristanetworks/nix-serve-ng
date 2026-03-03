@@ -1,6 +1,6 @@
 # `nix-serve-ng`
 
-`nix-serve-ng` is a faster, more reliable, drop-in replacement for `nix-serve`.
+`nix-serve-ng` is a faster, more reliable, more flexible replacement for `nix-serve`.
 
 ## Quick start
 
@@ -19,19 +19,19 @@ the old `nix-serve` with `nix-serve-ng`:
 We recommend approach **A**. Only use **B** or **C** if you need a bleeding edge
 upstream version of the project.
 
-### Variant A: 
+### Variant A:
 
 _The code snippet below shows a `flake.nix`._
 
 ```nix
-{ 
+{
   inputs.nixpkgs.url = "github:NixOS/nixpkgs";
 
   outputs = { nixpkgs, ... }: {
     nixosConfigurations.default = nixpkgs.lib.nixosSystem {
       modules = [
         /* ... */
-        { 
+        {
           services.nix-serve.enable = true;
           services.nix-serve.package = pkgs.nix-serve-ng;
           /* ... */
@@ -43,12 +43,12 @@ _The code snippet below shows a `flake.nix`._
 }
 ```
 
-### Variant B: 
+### Variant B:
 
 _The code snippet below shows a `flake.nix`._
 
 ```nix
-{ 
+{
   inputs.nixpkgs.url = "github:NixOS/nixpkgs";
   inputs.nix-serve-ng.url = "github:aristanetworks/nix-serve-ng";
 
@@ -57,7 +57,7 @@ _The code snippet below shows a `flake.nix`._
       modules = [
         nix-serve-ng.nixosModules.default
         /* ... */
-        { 
+        {
           services.nix-serve.enable = true;
           /* ... */
         }
@@ -68,14 +68,14 @@ _The code snippet below shows a `flake.nix`._
 }
 ```
 
-### Variant C: 
+### Variant C:
 
 _The code snippet below shows a NixOS module file._
 
 ```nix
 { config, pkgs, lib, ... }:
 
-let 
+let
   nix-serve-ng-src = builtins.fetchTarball {
     # Replace the URL and hash with whatever you actually need
     url    = "https://github.com/aristanetworks/nix-serve-ng/archive/1937593598bb1285b41804f25cd6f9ddd4d5f1cb.tar.gz";
@@ -85,10 +85,10 @@ let
 
   nix-serve-ng = import nix-serve-ng-src;
 in
-{ 
+{
   /* ... */
   imports = [ nix-serve-ng.nixosModules.default ];
-  
+
   config = {
     services.nix-serve.enable = true;
   };
@@ -96,7 +96,56 @@ in
 }
 ```
 
-## Lix compatability
+## New Features of `nix-serve-ng`
+
+### Reverse Proxying with --store URL
+
+`nix-serve-ng` can connect to other substituters with the --store option.
+
+URL is a standard nix store url see: `nix help-stores` for details.
+
+`--store=URL` can be specified more than once. Stores will be queried order of
+the `priority` query parameter (lowest to highest). Sets of stores with the same
+priority will be queried concurrently.
+
+`--retry-timeout=SECONDS` specifies how long to wait after a store operation
+fails before reenabling the store. The default is the value of the nix setting
+`connect-timeout`.
+
+`--cores=N` specifies the maximum number of cores. The default value is the
+size of the largest group of stores with the same priority.
+
+Example: You have two caches that are equally fast. One for releases without a
+retention policy, and one for build artifacts with 1 month retentions. You also
+want to fall back to the local store.
+
+```bash
+--store s3://releases --store s3://cache \
+--store daemon?priority=1
+```
+
+Example: First try a local binary cache, then an s3 binary cache, and then try
+remote builders.
+
+```bash
+--store file:///srv/hot \
+--store s3://cold?priority=1 \
+--store http://bld1?priority=2 --store http://bld2?priority=2
+```
+
+### Expanded logging options
+
+The following are available with `--log-format`:
+
+```bash
+quiet       Do not log
+normal      Apache logging format (default)
+real-ip     Apache logging format with ip forwarding resolved
+verbose     Verbose logging with colored output
+debug       Verbose logging with uncolored output
+```
+
+### Lix compatability
 
 The default `nix-serve-ng` should work on top of lix, but if you want to build
 it against lix for development or to remove the default nix dependency, you can
@@ -257,7 +306,7 @@ Speedups (compared to `nix-serve`):
 
 We can summarize `nix-serve-ng`'s performance like this:
 
-* Time to handle a NAR info request: ≈ 100 μs 
+* Time to handle a NAR info request: ≈ 100 μs
 * Time to serve a NAR: ≈ 500 μs + 800 μs / MB
 
 You can reproduce these benchmarks using the benchmark suite.  See the

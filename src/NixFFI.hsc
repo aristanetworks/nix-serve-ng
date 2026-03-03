@@ -1,14 +1,6 @@
-{-# LANGUAGE BlockArguments           #-}
-{-# LANGUAGE DeriveAnyClass           #-}
-{-# LANGUAGE DerivingStrategies       #-}
-{-# LANGUAGE DuplicateRecordFields    #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE MultiWayIf               #-}
-{-# LANGUAGE NamedFieldPuns           #-}
-{-# LANGUAGE OverloadedStrings        #-}
-{-# LANGUAGE TypeApplications         #-}
 
-module Nix where
+module NixFFI where
 
 import Control.Applicative (empty)
 import Control.Exception (Exception, SomeException)
@@ -18,10 +10,9 @@ import Data.ByteString.Builder (Builder)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Foreign (FunPtr, Ptr, Storable(..))
-import Foreign.C (CChar, CLong, CSize(..), CString)
+import Foreign.C (CChar, CInt(..), CLong, CSize(..), CString, CULong(..))
 
-import qualified Control.Exception       as Exception
-import qualified Control.Monad           as Monad
+import qualified Control.Exception.Safe  as Exception
 import qualified Control.Monad.Managed   as Managed
 import qualified Data.ByteString         as ByteString
 import qualified Data.ByteString.Base16  as Base16
@@ -34,13 +25,25 @@ import qualified Foreign
 
 #include "nix.hh"
 
-foreign import ccall "initStore" initStore :: IO ()
+data CppException = CppException
+  deriving anyclass (Exception)
+  deriving stock (Show)
 
-foreign import ccall "initStoreUri" initStoreUri_ :: CString -> IO ()
+checkSuccess :: CInt -> IO ()
+checkSuccess ec = case ec of
+    #{const RETURN_OK}   -> pure ()
+    _ -> Exception.throwIO CppException
 
-initStoreUri :: ByteString -> IO ()
-initStoreUri uri = do
-    ByteString.useAsCString uri initStoreUri_
+checkExitCode :: CInt -> IO Bool
+checkExitCode ec = case ec of
+    #{const RETURN_OK}   -> pure True
+    #{const RETURN_FAIL} -> pure False
+    _ -> Exception.throwIO CppException
+
+foreign import ccall "initStore" initStore_ :: CString -> IO CInt
+
+initStore :: ByteString -> IO Bool
+initStore url = ByteString.useAsCString url initStore_ >>= checkExitCode
 
 foreign import ccall "freeString" freeString :: Ptr String_ -> IO ()
 
@@ -201,33 +204,40 @@ getStoreDir =
             string_ <- peek output
             fromString_ string_
 
+foreign import ccall "getMaxConnectTimeout" getMaxConnectTimeout_ :: IO CULong
+
+getMaxConnectTimeout :: IO Word
+getMaxConnectTimeout = fromIntegral <$> getMaxConnectTimeout_
+
 data NoSuchPath = NoSuchPath
     deriving anyclass (Exception)
     deriving stock (Show)
 
 foreign import ccall "queryPathFromHashPart" queryPathFromHashPart_
-    :: CString -> Ptr String_ -> IO ()
+    :: CString -> CString -> Ptr String_ -> IO CInt
 
-queryPathFromHashPart :: ByteString -> IO (Either NoSuchPath ByteString)
-queryPathFromHashPart hashPart = do
-    ByteString.useAsCString hashPart \cHashPart -> do
-        Foreign.alloca \output -> do
-            let open = queryPathFromHashPart_ cHashPart output
-            let close = freeString output
-            Exception.bracket_ open close do
-                string_@String_{ data_} <- peek output
-                if data_ == Foreign.nullPtr
-                    then return (Left NoSuchPath)
-                    else fmap Right (fromString_ string_)
+queryPathFromHashPart :: ByteString -> ByteString -> IO (Maybe ByteString)
+queryPathFromHashPart url hashPart =
+  ByteString.useAsCString url \cUrl ->
+  ByteString.useAsCString hashPart \cHashPart -> do
+    Foreign.alloca \output -> do
+        let open = queryPathFromHashPart_ cUrl cHashPart output >>= checkSuccess
+        let close = freeString output
+        Exception.bracket_ open close do
+            string_@String_{ data_} <- peek output
+            if data_ == Foreign.nullPtr
+                then pure Nothing
+                else fmap Just (fromString_ string_)
 
 foreign import ccall "queryPathInfo" queryPathInfo_
-    :: CString -> Ptr CPathInfo -> IO ()
+    :: CString -> CString -> Ptr CPathInfo -> IO CInt
 
-queryPathInfo :: ByteString -> IO PathInfo
-queryPathInfo storePath = do
+queryPathInfo :: ByteString -> ByteString -> IO PathInfo
+queryPathInfo url storePath =
+    ByteString.useAsCString url \cUrl ->
     ByteString.useAsCString storePath \cStorePath -> do
         Foreign.alloca \output -> do
-            let open = queryPathInfo_ cStorePath output
+            let open = queryPathInfo_ cUrl cStorePath output >>= checkSuccess
             let close = freePathInfo output
             Exception.bracket_ open close do
                 cPathInfo <- peek output
@@ -266,24 +276,24 @@ fingerprintPath storePath PathInfo{ narHash, narSize, references } = do
                 <>  foldMap (\r -> "," <> Builder.byteString r) rs
 
 foreign import ccall "signString" signString_
-    :: CString -> CString -> Ptr String_ -> IO ()
+    :: CString -> CString -> Ptr String_ -> IO CInt
 
 signString :: ByteString -> ByteString -> IO ByteString
 signString secretKey fingerprint =
     ByteString.useAsCString secretKey \cSecretKey ->
         ByteString.useAsCString fingerprint \cFingerprint ->
             Foreign.alloca \output -> do
-                let open = signString_ cSecretKey cFingerprint output
+                let open = signString_ cSecretKey cFingerprint output >>= checkSuccess
                 let close = freeString output
                 Exception.bracket_ open close do
                     string_ <- peek output
                     fromString_ string_
 
 foreign import ccall "dumpPath" dumpPath_
-    :: CString -> FunPtr (Ptr CChar -> CSize -> IO Bool) -> IO Bool
+    :: CString -> CString -> FunPtr (Ptr CChar -> CSize -> IO Bool) -> IO CInt
 
-dumpPath :: ByteString -> (Builder -> IO ()) -> IO (Either SomeException ())
-dumpPath hashPart builderCallback = do
+dumpPath :: ByteString -> ByteString -> (Builder -> IO ()) -> IO ()
+dumpPath url storePath builderCallback = do
     result <- IORef.newIORef (Right ())
 
     let cCallback :: Ptr CChar -> CSize -> IO Bool
@@ -319,24 +329,23 @@ dumpPath hashPart builderCallback = do
 
     wrappedCCallback <- wrapCallback cCallback
 
-    ByteString.useAsCString hashPart \cHashPart -> do
-        success <- dumpPath_ cHashPart wrappedCCallback
-
-        Monad.when (not success) do
-            IORef.writeIORef result (Left (Exception.toException NoSuchPath))
+    ByteString.useAsCString url \cUrl ->
+        ByteString.useAsCString storePath \cStorePath -> do
+            dumpPath_ cUrl cStorePath wrappedCCallback >>= checkSuccess
 
     Foreign.freeHaskellFunPtr wrappedCCallback
 
-    IORef.readIORef result
+    IORef.readIORef result >>= either Exception.throwIO pure
 
 foreign import ccall "dumpLog" dumpLog_
-    :: CString -> Ptr String_ -> IO ()
+    :: CString -> CString -> Ptr String_ -> IO CInt
 
-dumpLog :: ByteString -> IO (Maybe ByteString)
-dumpLog baseName = do
+dumpLog :: ByteString -> ByteString -> IO (Maybe ByteString)
+dumpLog url baseName =
+    ByteString.useAsCString url \cUrl ->
     ByteString.useAsCString baseName \cBaseName -> do
         Foreign.alloca \output -> do
-            let open = dumpLog_ cBaseName output
+            let open = dumpLog_ cUrl cBaseName output >>= checkSuccess
             let close = freeString output
             Exception.bracket_ open close do
                 string_@String_{ data_} <- peek output
