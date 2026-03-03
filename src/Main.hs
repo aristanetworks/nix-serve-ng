@@ -12,15 +12,17 @@ import Numeric.Natural (Natural)
 import Options (Options(..), Socket(..), SSL(..), LogFormat(..))
 
 import qualified Control.Concurrent.Async             as Async
-import qualified Data.List.NonEmpty                   as NonEmpty
 import qualified Control.Monad                        as Monad
 import qualified Control.Monad.Except                 as Except
+import qualified Data.Aeson                           as Aeson
 import qualified Data.ByteString                      as ByteString
 import qualified Data.ByteString.Char8                as ByteString.Char8
 import qualified Data.ByteString.Builder              as Builder
 import qualified Data.ByteString.Lazy                 as ByteString.Lazy
 import qualified Data.CharSet.ByteSet                 as ByteSet
 import qualified Data.List                            as List
+import qualified Data.List.NonEmpty                   as NonEmpty
+import qualified Data.Text.Encoding                   as Text
 import qualified Data.Vector                          as Vector
 import qualified Data.Void                            as Void
 import qualified Network.HTTP.Types                   as Types
@@ -115,7 +117,9 @@ makeApplication opts request respond = do
           result <- liftIO $ findJustM raceQuery (Nix.priorityGroups opts.stores)
 
           let logged (store, (storePath, pathInfo)) = do
-                  liftIO $ Nix.logMsg Debug Blue store "Using" []
+                  let toValue = Aeson.toJSON . Text.decodeUtf8Lenient
+                  liftIO $ Nix.logMsg Debug Blue store "Found" [ ("hashPart", toValue hashPart)
+                                                               , ("storePath", toValue storePath) ]
                   pure (store, storePath, pathInfo)
 
           maybe noSuchPath logged result
