@@ -4,7 +4,6 @@ module Nix (
   priorityGroups,
   storeList,
   -- raw reexports from NixFFI
-  CppException(..),
   PathInfo(..),
   getStoreDir,
   fingerprintPath,
@@ -175,15 +174,16 @@ queryPathInfoFromHashPart store hashPart = do
   pure $ join result
 
 dumpPath :: Store -> ByteString -> (Builder -> IO ()) -> IO ()
-dumpPath store hashPart builderCallback = do
-  result <- withTimeout store \url -> NixFFI.dumpPath url hashPart builderCallback
-  maybe (Exception.throwIO $ PathGoneException store hashPart) pure result
+dumpPath store storePath builderCallback = do
+  result <- withTimeout store \url -> NixFFI.dumpPath url storePath builderCallback
+  maybe (Exception.throwIO $ StreamingException store storePath) pure result
 
-data PathGoneException = PathGoneException Store ByteString
-instance Exception PathGoneException
-instance Show PathGoneException where
-  show (PathGoneException store hashPart) = C8.unpack $
-    "Info for " <> hashPart <> " found in " <> store.storeURL <> " but path is gone"
+data StreamingException = StreamingException Store ByteString
+  deriving anyclass Exception
+
+instance Show StreamingException where
+  show (StreamingException store storePath) = C8.unpack $
+    "Exception occurred while streaming " <> storePath <> " from " <> store.storeURL
 
 
 dumpLog :: Store -> ByteString -> IO (Maybe ByteString)

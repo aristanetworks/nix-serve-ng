@@ -13,7 +13,6 @@ import Foreign (FunPtr, Ptr, Storable(..))
 import Foreign.C (CChar, CInt(..), CLong, CSize(..), CString, CULong(..))
 
 import qualified Control.Exception.Safe  as Exception
-import qualified Control.Monad           as Monad
 import qualified Control.Monad.Managed   as Managed
 import qualified Data.ByteString         as ByteString
 import qualified Data.ByteString.Base16  as Base16
@@ -29,6 +28,11 @@ import qualified Foreign
 data CppException = CppException
   deriving anyclass (Exception)
   deriving stock (Show)
+
+checkSuccess :: CInt -> IO ()
+checkSuccess ec = case ec of
+    #{const RETURN_OK}   -> pure ()
+    _ -> Exception.throwIO CppException
 
 checkExitCode :: CInt -> IO Bool
 checkExitCode ec = case ec of
@@ -217,7 +221,7 @@ queryPathFromHashPart url hashPart =
   ByteString.useAsCString url \cUrl ->
   ByteString.useAsCString hashPart \cHashPart -> do
     Foreign.alloca \output -> do
-        let open = queryPathFromHashPart_ cUrl cHashPart output >>= checkExitCode
+        let open = queryPathFromHashPart_ cUrl cHashPart output >>= checkSuccess
         let close = freeString output
         Exception.bracket_ open close do
             string_@String_{ data_} <- peek output
@@ -233,7 +237,7 @@ queryPathInfo url storePath =
     ByteString.useAsCString url \cUrl ->
     ByteString.useAsCString storePath \cStorePath -> do
         Foreign.alloca \output -> do
-            let open = queryPathInfo_ cUrl cStorePath output >>= checkExitCode
+            let open = queryPathInfo_ cUrl cStorePath output >>= checkSuccess
             let close = freePathInfo output
             Exception.bracket_ open close do
                 cPathInfo <- peek output
@@ -279,7 +283,7 @@ signString secretKey fingerprint =
     ByteString.useAsCString secretKey \cSecretKey ->
         ByteString.useAsCString fingerprint \cFingerprint ->
             Foreign.alloca \output -> do
-                let open = signString_ cSecretKey cFingerprint output >>= checkExitCode
+                let open = signString_ cSecretKey cFingerprint output >>= checkSuccess
                 let close = freeString output
                 Exception.bracket_ open close do
                     string_ <- peek output
@@ -289,7 +293,7 @@ foreign import ccall "dumpPath" dumpPath_
     :: CString -> CString -> FunPtr (Ptr CChar -> CSize -> IO Bool) -> IO CInt
 
 dumpPath :: ByteString -> ByteString -> (Builder -> IO ()) -> IO ()
-dumpPath url hashPart builderCallback = do
+dumpPath url storePath builderCallback = do
     result <- IORef.newIORef (Right ())
 
     let cCallback :: Ptr CChar -> CSize -> IO Bool
@@ -326,11 +330,8 @@ dumpPath url hashPart builderCallback = do
     wrappedCCallback <- wrapCallback cCallback
 
     ByteString.useAsCString url \cUrl ->
-        ByteString.useAsCString hashPart \cHashPart -> do
-            success <- dumpPath_ cUrl cHashPart wrappedCCallback >>= checkExitCode
-
-            Monad.when (not success) do
-                IORef.writeIORef result (Left (Exception.toException NoSuchPath))
+        ByteString.useAsCString storePath \cStorePath -> do
+            dumpPath_ cUrl cStorePath wrappedCCallback >>= checkSuccess
 
     Foreign.freeHaskellFunPtr wrappedCCallback
 
@@ -344,7 +345,7 @@ dumpLog url baseName =
     ByteString.useAsCString url \cUrl ->
     ByteString.useAsCString baseName \cBaseName -> do
         Foreign.alloca \output -> do
-            let open = dumpLog_ cUrl cBaseName output >>= checkExitCode
+            let open = dumpLog_ cUrl cBaseName output >>= checkSuccess
             let close = freeString output
             Exception.bracket_ open close do
                 string_@String_{ data_} <- peek output

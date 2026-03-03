@@ -21,9 +21,9 @@
 #if CPPNIX
     #include <nix/main/shared.hh>
     #include <nix/store/filetransfer.hh>
-    #include <nix/store/store-api.hh>
     #include <nix/store/local-store.hh>
     #include <nix/store/log-store.hh>
+    #include <nix/store/store-api.hh>
 #else
     #include <lix/config.h>
     #include <lix/libmain/shared.hh>
@@ -321,48 +321,40 @@ ffi_return_codes_t signString
 
 ffi_return_codes_t dumpPath
     ( char const * const url
-    , char const * const hashPart
+    , char const * const storePathStr
     , bool (* const callback)(char const * const data, size_t const size)
     )
 {
     try {
         ref<Store> store = getStore(url);
 
-        std::optional<StorePath> storePath =
-            BLOCKON(store->queryPathFromHashPart(hashPart));
+        auto storePath = store->parseStorePath(storePathStr);
 
-        if (storePath.has_value()) {
-            LambdaSink sink([=](std::string_view v) {
-                bool succeeded = (*callback)(v.data(), v.size());
+        LambdaSink sink([=](std::string_view v) {
+            bool succeeded = (*callback)(v.data(), v.size());
 
-                if (!succeeded) {
-                    // We don't really care about the error message.  The only
-                    // reason for throwing an exception here is that this is the
-                    // only way that a Nix sink can exit early.
-                    throw std::runtime_error("");
-                }
-            });
-
-            try {
-                #if CPPNIX
-                store->narFromPath(storePath.value(), sink);
-                #elif LIX_PRE_2_93
-                sink << store->narFromPath(storePath.value());
-                #elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
-                aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink);
-                #else
-                aio().blockOn(aio().blockOn(store->narFromPath(storePath.value()))->drainInto(sink));
-                #endif
-            } catch (const std::runtime_error & e) {
-                // Intentionally do nothing.  We're only using the exception as a
-                // short-circuiting mechanism.
+            if (!succeeded) {
+                // We don't really care about the error message.  The only
+                // reason for throwing an exception here is that this is the
+                // only way that a Nix sink can exit early.
+                throw std::runtime_error("");
             }
+        });
 
-            return RETURN_OK;
-        } else {
-            return RETURN_FAIL;
+        try {
+            #if CPPNIX
+            store->narFromPath(storePath, sink);
+            #elif LIX_PRE_2_93
+            sink << store->narFromPath(storePath);
+            #elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 94
+            aio().blockOn(store->narFromPath(storePath))->drainInto(sink);
+            #else
+            aio().blockOn(aio().blockOn(store->narFromPath(storePath))->drainInto(sink));
+            #endif
+        } catch (const std::runtime_error & e) {
+            // Intentionally do nothing.  We're only using the exception as a
+            // short-circuiting mechanism.
         }
-
     } catch(const std::exception& e) {
         std::cout << "Exception in 'dumpPath': " << e.what() << std::endl;
         return RETURN_EXCEPTION;

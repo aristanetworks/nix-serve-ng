@@ -240,7 +240,7 @@ makeApplication opts request respond = do
                 Monad.unless (validHashPart hashPart) do
                     invalidPath
 
-                (store, _, PathInfo{narHash}) <- queryPathInfoFromHashPart hashPart
+                (store, storePath, PathInfo{narHash}) <- queryPathInfoFromHashPart hashPart
 
                 Monad.unless (all (narHash ==) maybeExpectedNarHash) do
                     let headers = [ ("Content-Type", "text/plain") ]
@@ -256,7 +256,7 @@ makeApplication opts request respond = do
 
                     done response
 
-                let streamingBody write flush = Nix.dumpPath store hashPart callback
+                let streamingBody write flush = Nix.dumpPath store storePath callback
                       where callback builder = write builder >> flush
 
                 let headers = [ ("Content-Type", "text/plain") ]
