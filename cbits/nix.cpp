@@ -123,6 +123,8 @@ void freeStrings(struct strings * const input)
     for (size_t i = 0; i < size; i++) {
         freeString(&input->data[i]);
     }
+
+    free(input->data);
 }
 
 }

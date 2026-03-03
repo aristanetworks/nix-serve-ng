@@ -325,6 +325,8 @@ dumpPath hashPart builderCallback = do
         Monad.when (not success) do
             IORef.writeIORef result (Left (Exception.toException NoSuchPath))
 
+    Foreign.freeHaskellFunPtr wrappedCCallback
+
     IORef.readIORef result
 
 foreign import ccall "dumpLog" dumpLog_
