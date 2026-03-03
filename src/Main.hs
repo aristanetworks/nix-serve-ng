@@ -110,9 +110,6 @@ makeApplication opts request respond = do
             done response
 
     let queryPathInfoFromHashPart hashPart = do
-          -- TODO: Maybe we should cancel the queries that lose the race?
-          -- Choosing not to becasue it's possible it may invalidate connections
-          -- for some store types, and it's hard to test.
           let raceQuery = mapRace (flip Nix.queryPathInfoFromHashPart hashPart)
           result <- liftIO $ findJustM raceQuery (Nix.priorityGroups opts.stores)
 
