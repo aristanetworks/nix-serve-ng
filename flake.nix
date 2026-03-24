@@ -5,6 +5,7 @@
     lix-2_92_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.92.3";
     lix-2_93_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.93.3";
     lix-2_94_0.url = "git+https://git.lix.systems/lix-project/lix?ref=2.94.0";
+    lix-2_95_0.url = "git+https://git.lix.systems/lix-project/lix?ref=2.95.0";
     lix-unstable.url = "git+https://git.lix.systems/lix-project/lix?ref=main";
 
     utils.url = "github:numtide/flake-utils";
@@ -36,6 +37,7 @@
         lix-serve-ng-2_92_3 = null;
         lix-serve-ng-2_93_3 = null;
         lix-serve-ng-2_94_0 = null;
+        lix-serve-ng-2_95_0 = null;
         lix-serve-ng-unstable = null;
       };
 
@@ -49,6 +51,7 @@
             lix-serve-ng-2_92_3 = inputs.lix-2_92_3.packages.${final.system}.nix;
             lix-serve-ng-2_93_3 = inputs.lix-2_93_3.packages.${final.system}.nix;
             lix-serve-ng-2_94_0 = inputs.lix-2_94_0.packages.${final.system}.nix;
+            lix-serve-ng-2_95_0 = inputs.lix-2_95_0.packages.${final.system}.nix;
             lix-serve-ng-unstable = inputs.lix-unstable.packages.${final.system}.nix;
           };
 
