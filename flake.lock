@@ -139,7 +139,7 @@
         "url": "https://git.lix.systems/lix-project/lix"
       }
     },
-    "lix-2_94_0": {
+    "lix-2_94_1": {
       "inputs": {
         "flake-compat": "flake-compat_4",
         "nix2container": "nix2container_3",
@@ -149,16 +149,16 @@
         "pre-commit-hooks": "pre-commit-hooks_3"
       },
       "locked": {
-        "lastModified": 1763408539,
-        "narHash": "sha256-X6X3NhgLnpkgWUbLs0nLjusNx/el3L1EkVm6OHqY2z8=",
-        "ref": "2.94.0",
-        "rev": "43dc3b987fb47bd45ee7ed6967febac2595c468e",
-        "revCount": 18528,
+        "lastModified": 1773419946,
+        "narHash": "sha256-+VJmizrdZPygtffgS/yfMb4PkZUUK5JmyGGzn0GPsKc=",
+        "ref": "2.94.1",
+        "rev": "4c558573a70daf325924649fc9384e2a8d9a8f3d",
+        "revCount": 18538,
         "type": "git",
         "url": "https://git.lix.systems/lix-project/lix"
       },
       "original": {
-        "ref": "2.94.0",
+        "ref": "2.94.1",
         "type": "git",
         "url": "https://git.lix.systems/lix-project/lix"
       }
@@ -386,13 +386,13 @@
     "nix_2_18_2": {
       "inputs": {
         "flake-compat": [
-          "lix-2_94_0",
+          "lix-2_94_1",
           "flake-compat"
         ],
         "lowdown-src": "lowdown-src_2",
         "nixpkgs": "nixpkgs_4",
         "nixpkgs-regression": [
-          "lix-2_94_0",
+          "lix-2_94_1",
           "nixpkgs-regression"
         ]
       },
@@ -792,7 +792,7 @@
         "flake-compat": "flake-compat",
         "lix-2_92_3": "lix-2_92_3",
         "lix-2_93_3": "lix-2_93_3",
-        "lix-2_94_0": "lix-2_94_0",
+        "lix-2_94_1": "lix-2_94_1",
         "lix-2_95_0": "lix-2_95_0",
         "lix-unstable": "lix-unstable",
         "nixpkgs": "nixpkgs_10",
