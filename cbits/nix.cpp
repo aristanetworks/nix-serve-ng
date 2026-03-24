@@ -190,8 +190,10 @@ void queryPathInfo
 
 #if CPPNIX
     copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
-#else
+#elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 95
     copyString(validPathInfo->narHash.to_string(nix::Base::Base32, true), &output->narHash);
+#else
+    copyString(validPathInfo->narHash.to_string(nix::HashFormat::Base32, true), &output->narHash);
 #endif
 
     output->narSize = validPathInfo->narSize;

@@ -64,6 +64,20 @@
         "type": "github"
       }
     },
+    "flake-compat_5": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1751685974,
+        "narHash": "sha256-NKw96t+BgHIYzHUjkTK95FqYRVKB8DHpVhefWSz/kTw=",
+        "rev": "549f2762aebeff29a2e5ece7a7dc0f955281a1d1",
+        "type": "tarball",
+        "url": "https://git.lix.systems/api/v1/repos/lix-project/flake-compat/archive/549f2762aebeff29a2e5ece7a7dc0f955281a1d1.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://git.lix.systems/lix-project/flake-compat/archive/main.tar.gz"
+      }
+    },
     "lix-2_92_3": {
       "inputs": {
         "flake-compat": "flake-compat_2",
@@ -135,6 +149,30 @@
         "url": "https://git.lix.systems/lix-project/lix"
       }
     },
+    "lix-unstable": {
+      "inputs": {
+        "flake-compat": "flake-compat_5",
+        "nix2container": "nix2container_4",
+        "nix_2_18": "nix_2_18_3",
+        "nixpkgs": "nixpkgs_7",
+        "nixpkgs-regression": "nixpkgs-regression_4",
+        "pre-commit-hooks": "pre-commit-hooks_4"
+      },
+      "locked": {
+        "lastModified": 1774309047,
+        "narHash": "sha256-mI9wP3IA3As2YHc//YILTfRC74KrvFhiCAAHRn9AAJ0=",
+        "ref": "main",
+        "rev": "b94d615baa20ac93fb48674e017dd1498a573168",
+        "revCount": 19098,
+        "type": "git",
+        "url": "https://git.lix.systems/lix-project/lix"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "https://git.lix.systems/lix-project/lix"
+      }
+    },
     "lowdown-src": {
       "flake": false,
       "locked": {
@@ -152,6 +190,22 @@
       }
     },
     "lowdown-src_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1633514407,
+        "narHash": "sha256-Dw32tiMjdK9t3ETl5fzGrutQTzh2rufgZV4A/BbxuD4=",
+        "owner": "kristapsdz",
+        "repo": "lowdown",
+        "rev": "d2c2b44ff6c27b936ec27358a2653caaef8f73b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kristapsdz",
+        "repo": "lowdown",
+        "type": "github"
+      }
+    },
+    "lowdown-src_3": {
       "flake": false,
       "locked": {
         "lastModified": 1633514407,
@@ -215,6 +269,22 @@
         "type": "github"
       }
     },
+    "nix2container_4": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767195068,
+        "narHash": "sha256-+OMnL79ZjqM/PCz2hoQ12MnXNoSSfBGnsYBOZnA9XbI=",
+        "owner": "nlewo",
+        "repo": "nix2container",
+        "rev": "bb6801be998ba857a62c002cb77ece66b0a57298",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nlewo",
+        "repo": "nix2container",
+        "type": "github"
+      }
+    },
     "nix_2_18": {
       "inputs": {
         "flake-compat": [
@@ -253,6 +323,34 @@
         "nixpkgs": "nixpkgs_4",
         "nixpkgs-regression": [
           "lix-2_94_0",
+          "nixpkgs-regression"
+        ]
+      },
+      "locked": {
+        "lastModified": 1730375271,
+        "narHash": "sha256-RrOFlDGmRXcVRV2p2HqHGqvzGNyWoD0Dado/BNlJ1SI=",
+        "owner": "NixOS",
+        "repo": "nix",
+        "rev": "0f665ff6779454f2117dcc32e44380cda7f45523",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "2.18.9",
+        "repo": "nix",
+        "type": "github"
+      }
+    },
+    "nix_2_18_3": {
+      "inputs": {
+        "flake-compat": [
+          "lix-unstable",
+          "flake-compat"
+        ],
+        "lowdown-src": "lowdown-src_3",
+        "nixpkgs": "nixpkgs_6",
+        "nixpkgs-regression": [
+          "lix-unstable",
           "nixpkgs-regression"
         ]
       },
@@ -335,6 +433,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-regression_4": {
+      "locked": {
+        "lastModified": 1643052045,
+        "narHash": "sha256-uGJ0VXIhWKGXxkeNnq4TvV3CIOkUJ3PAoLZ3HMzNVMw=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "215d4d0fd80ca5163643b03a33fde804a29cc1e2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "215d4d0fd80ca5163643b03a33fde804a29cc1e2",
+        "type": "github"
+      }
+    },
     "nixpkgs_2": {
       "locked": {
         "lastModified": 1705033721,
@@ -401,6 +515,38 @@
     },
     "nixpkgs_6": {
       "locked": {
+        "lastModified": 1705033721,
+        "narHash": "sha256-K5eJHmL1/kev6WuqyqqbS1cdNnSidIZ3jeqJ7GbrYnQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "a1982c92d8980a0114372973cbdfe0a307f1bdea",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-23.05-small",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_7": {
+      "locked": {
+        "lastModified": 1773082486,
+        "narHash": "sha256-TKUDrM0nKUo5s/b8jhjXa2prcu5KU5Cck3HBTRLDjfo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "7f8b8875bdb38a70c7b5ceb9ba6a6a8d69859e16",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-25.11-small",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_8": {
+      "locked": {
         "lastModified": 1764560356,
         "narHash": "sha256-M5aFEFPppI4UhdOxwdmceJ9bDJC4T6C6CzCK1E2FZyo=",
         "owner": "NixOS",
@@ -463,13 +609,30 @@
         "type": "github"
       }
     },
+    "pre-commit-hooks_4": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1769939035,
+        "narHash": "sha256-Fok2AmefgVA0+eprw2NDwqKkPGEI5wvR+twiZagBvrg=",
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "rev": "a8ca480175326551d6c4121498316261cbb5b260",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-compat": "flake-compat",
         "lix-2_92_3": "lix-2_92_3",
         "lix-2_93_3": "lix-2_93_3",
         "lix-2_94_0": "lix-2_94_0",
-        "nixpkgs": "nixpkgs_6",
+        "lix-unstable": "lix-unstable",
+        "nixpkgs": "nixpkgs_8",
         "utils": "utils"
       }
     },
