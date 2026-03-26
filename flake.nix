@@ -5,7 +5,7 @@
     lix-2_92_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.92.3";
     lix-2_93_3.url = "git+https://git.lix.systems/lix-project/lix?ref=2.93.3";
     lix-2_94_1.url = "git+https://git.lix.systems/lix-project/lix?ref=2.94.1";
-    lix-2_95_0.url = "git+https://git.lix.systems/lix-project/lix?ref=2.95.0";
+    lix-2_95_1.url = "git+https://git.lix.systems/lix-project/lix?ref=2.95.1";
     lix-unstable.url = "git+https://git.lix.systems/lix-project/lix?ref=main";
 
     utils.url = "github:numtide/flake-utils";
@@ -30,16 +30,19 @@
         };
       };
 
+      lix-pins =
+        let
+          inames  = builtins.attrNames inputs;
+          matches = map (builtins.match "lix-(.*)") inames;
+          names   = builtins.concatMap (m: if m == null then [] else m) matches;
+        in
+        builtins.listToAttrs (map (n: { name = "lix-serve-ng-${n}"; value = "lix-${n}"; }) names);
+
       # All variants known by the flake, more can be added via overlay.
       variants = {
         nix-serve-ng = null;
         lix-serve-ng = null;
-        lix-serve-ng-2_92_3 = null;
-        lix-serve-ng-2_93_3 = null;
-        lix-serve-ng-2_94_1 = null;
-        lix-serve-ng-2_95_0 = null;
-        lix-serve-ng-unstable = null;
-      };
+      } // lix-pins;
 
       forEachVariant = f: builtins.mapAttrs (name: _: f name) variants;
 
@@ -48,12 +51,7 @@
           nix-versions = {
             nix-serve-ng = final.nixVersions.nix_2_28;
             lix-serve-ng = final.lix;
-            lix-serve-ng-2_92_3 = inputs.lix-2_92_3.packages.${final.system}.nix;
-            lix-serve-ng-2_93_3 = inputs.lix-2_93_3.packages.${final.system}.nix;
-            lix-serve-ng-2_94_1 = inputs.lix-2_94_1.packages.${final.system}.nix;
-            lix-serve-ng-2_95_0 = inputs.lix-2_95_0.packages.${final.system}.nix;
-            lix-serve-ng-unstable = inputs.lix-unstable.packages.${final.system}.nix;
-          };
+          } // builtins.mapAttrs (_: attr: inputs.${attr}.packages.${final.system}.nix) lix-pins;
 
           packages = final.nix-serve-ng-pkgs.forEachNix (name: _:
             final.haskell.lib.justStaticExecutables final.haskell.packages.${compiler}.${name}
@@ -133,11 +131,12 @@
       in
       rec {
         packages = fastPackages // {
-          inherit pkgs;
           default = packages.nix-serve-ng;
         };
 
         defaultPackage = packages.default;
+
+        legacyPackages = { inherit pkgs; };
 
         apps = forEachVariant (name: {
           type = "app";
