@@ -152,6 +152,10 @@
           // { default = devShells.nix-serve-ng; };
 
         devShell = devShells.default;
+
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          basic = import ./test/basic.nix { inherit pkgs; };
+        };
       }
     )
     // rec {
