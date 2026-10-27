@@ -192,8 +192,12 @@ void queryPathInfo
     copyString(validPathInfo->narHash.to_string(nix::HashFormat::Nix32, true), &output->narHash);
 #elif ! defined(LIX_MAJOR) || LIX_MAJOR <= 2 && LIX_MINOR < 95
     copyString(validPathInfo->narHash.to_string(nix::Base::Base32, true), &output->narHash);
-#else
+#elif LIX_MAJOR <= 2 && LIX_MINOR < 96
     copyString(validPathInfo->narHash.to_string(nix::HashFormat::Base32, true), &output->narHash);
+#else
+    // Lix 2.96 removed Hash::to_string and HashFormat. to_base32() retains
+    // the "sha256:" prefix expected by the Haskell layer.
+    copyString(validPathInfo->narHash.to_base32(), &output->narHash);
 #endif
 
     output->narSize = validPathInfo->narSize;
